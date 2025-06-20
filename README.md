@@ -1,3 +1,4 @@
+# -
 import ccxt
 import time
 import pandas as pd
@@ -109,6 +110,35 @@ while True:
         print(f"⚠️ Помилка: {e}")
 
     time.sleep(CHECK_INTERVAL)
-.env
-MEXC_API_KEY=твій_api_key_тут
-MEXC_API_SECRET=твій_api_secret_тут
+
+import os
+import time
+from dotenv import load_dotenv
+
+load_dotenv()
+
+api_key = os.getenv("MEXC_API_KEY")
+api_secret = os.getenv("MEXC_API_SECRET")
+
+def main():
+    if not api_key or not api_secret:
+        print("❌ API ключі не знайдено!")
+        return
+
+    print("✅ Бот підключено до MEXC API")
+    print(f"API KEY: {api_key[:4]}...")
+    # Тут логіка торгівлі
+
+if __name__ == "__main__":
+    main()
+# === .env ===
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+api_key = os.getenv("mx0vglRO7tZcBeeq3y")
+api_secret = os.getenv("b64311ce406c4baf91f775563484746b")
+
+# === python-dotenv ===
+pip install python-dotenv
