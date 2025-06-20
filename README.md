@@ -142,3 +142,5 @@ api_secret = os.getenv("b64311ce406c4baf91f775563484746b")
 
 # === python-dotenv ===
 pip install python-dotenv
+
+python intelligent_trading_bot.py
