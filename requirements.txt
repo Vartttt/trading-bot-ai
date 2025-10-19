@@ -1,1 +1,3 @@
-pip install pandas ta requests python-dotenv
+Flask==3.0.0
+requests==2.31.0
+gunicorn==20.1.0
