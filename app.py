@@ -1,4 +1,3 @@
-# app.py
 import os
 import requests
 from flask import Flask, request, jsonify
@@ -7,13 +6,14 @@ from learning import record_result
 
 app = Flask(__name__)
 
-# ✅ Telegram налаштування
+# Telegram
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+TELEGRAM_API = None
+
 if TELEGRAM_TOKEN and CHAT_ID:
     TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 else:
-    TELEGRAM_API = None
     print("⚠️ WARNING: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set!")
 
 @app.route("/")
@@ -54,14 +54,12 @@ def signal():
         record_result(False)
         return jsonify({"error": str(e)}), 500
 
-# ⚙️ Railway/Gunicorn використовують свій сервер, але локально можна запускати
+# ✅ Локальний запуск (не використовується на Railway)
 if __name__ == "__main__":
     try:
         port = int(os.environ.get("PORT", 8080))
     except ValueError:
-        print("⚠️ Invalid PORT, using 8080")
         port = 8080
-
     print(f"✅ Bot running on port {port}")
     app.run(host="0.0.0.0", port=port)
 
