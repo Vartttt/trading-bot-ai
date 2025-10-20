@@ -53,8 +53,9 @@ def signal():
 # ⚙️ Railway запускає через Gunicorn, тож не треба app.run() при продакшені
 
 if __name__ == "__main__":
-    print("✅ Bot started and listening...")
     port = int(os.environ.get("PORT", 8080))
+    print(f"✅ Bot running on port {port}")
     app.run(host="0.0.0.0", port=port)
+
 
 
