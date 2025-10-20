@@ -56,11 +56,7 @@ def signal():
 
 # ✅ Локальний запуск (не використовується на Railway)
 if __name__ == "__main__":
-    try:
-        port = int(os.environ.get("PORT", 8080))
-    except ValueError:
-        port = 8080
-    print(f"✅ Bot running on port {port}")
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
 
