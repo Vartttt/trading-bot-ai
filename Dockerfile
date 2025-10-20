@@ -29,6 +29,6 @@ COPY . .
 # Railway сам підставляє PORT (не фіксуй його)
 EXPOSE 8080
 
-# Запуск через Gunicorn (використовує PORT із середовища)
-CMD ["gunicorn", "app:app", "--workers", "2", "--threads", "4", "--bind", "0.0.0.0:$PORT"]
+# Запуск через Gunicorn (використовує PORT із середовища або 8080 за замовчуванням)
+CMD gunicorn app:app --workers 2 --threads 4 --bind 0.0.0.0:${PORT:-8080}
 
