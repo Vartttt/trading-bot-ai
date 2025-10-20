@@ -49,9 +49,12 @@ def signal():
         record_result(False)
         return jsonify({"error": str(e)}), 500
 
+
+# ⚙️ Railway запускає через Gunicorn, тож не треба app.run() при продакшені
 if __name__ == "__main__":
-    from gunicorn.app.base import BaseApplication
-    print("✅ Bot started in debug mode...")
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    print("✅ Bot started locally on port 8080...")
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=True)
+
 
 
