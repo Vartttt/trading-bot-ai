@@ -1,3 +1,4 @@
+# app.py
 import os
 import requests
 from flask import Flask, request, jsonify
@@ -6,11 +7,11 @@ from learning import record_result
 
 app = Flask(__name__)
 
-# Telegram
+# Telegram налаштування
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-TELEGRAM_API = None
 
+TELEGRAM_API = None
 if TELEGRAM_TOKEN and CHAT_ID:
     TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 else:
@@ -54,11 +55,11 @@ def signal():
         record_result(False)
         return jsonify({"error": str(e)}), 500
 
-# ✅ Локальний запуск (не використовується на Railway)
+# ⚙️ Локальний запуск (не використовується на Railway)
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    try:
+        port = int(os.environ.get("PORT", 8080))
+    except ValueError:
+        port = 8080
+    print(f"✅ Bot running on port {port}")
     app.run(host="0.0.0.0", port=port)
-
-
-
-
