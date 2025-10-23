@@ -1,14 +1,8 @@
-
----
-
-# `config.py`
-```python
 # config.py
 import os
 
 # Pairs (user-provided list)
-TOP_MANUAL_PAIRS = [p.strip() for p in os.getenv(
-    TOP_MANUAL_PAIRS = [
+TOP_MANUAL_PAIRS = [
     "BTC/USDT",
     "ETH/USDT",
     "SOL/USDT",
@@ -27,3 +21,4 @@ SL_ATR_MULT = 1.0
 
 # Telegram formatting
 TIMEFRAME_LABEL = "5m"  # primary TF for signals
+
