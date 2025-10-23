@@ -8,9 +8,13 @@ import os
 
 # Pairs (user-provided list)
 TOP_MANUAL_PAIRS = [p.strip() for p in os.getenv(
-    "TOP_MANUAL_PAIRS",
-    "BTC/USDT,ETH/USDT,SOL/USDT,XRP/USDT,BNB/USDT,XPL/USDT,USELESS/USDT,TON/USDT,DOGE/USDT,PEPE/USDT"
-).split(",")]
+    TOP_MANUAL_PAIRS = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "XRP/USDT",
+    "TON/USDT"
+]
 
 SYMBOL_QUOTE = os.getenv("SYMBOL_QUOTE", "USDT")
 EXCHANGE_ID = os.getenv("EXCHANGE", "binance")
