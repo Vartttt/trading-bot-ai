@@ -2,7 +2,7 @@
 import threading
 import time
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from flask import Flask, jsonify
 
 app = Flask(__name__)
@@ -24,13 +24,16 @@ except Exception as e:
     init_db = save_signal = plot_signal_chart = lambda *a, **k: None
     TOP_MANUAL_PAIRS, CHECK_INTERVAL_SECONDS, MIN_STRENGTH, TIMEFRAME_LABEL = [], 60, 70, "5m"
 
+
 @app.route("/")
 def home():
     return "Trading signal bot is running ✅"
 
+
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "time": datetime.utcnow().isoformat()})
+    # тепер час у форматі UTC без попереджень
+    return jsonify({"status": "ok", "time": datetime.now(UTC).isoformat()})
 
 
 def format_signal_message(symbol, timeframe, sig):
@@ -79,6 +82,7 @@ def background_loop():
 
     sent = set()
     last_pre = {}
+
     while True:
         for sym in TOP_MANUAL_PAIRS:
             try:
@@ -88,6 +92,7 @@ def background_loop():
             except Exception as e:
                 print("Fetch error", sym, e)
                 continue
+
             try:
                 df5i = compute_indicators(df5)
                 df15i = compute_indicators(df15)
@@ -103,11 +108,11 @@ def background_loop():
                     est_entry = float(df1i["close"].iloc[-1])
                     sig5 = generate_signal(df5i, df15i)
                     strength = sig5["strength"] if sig5 else 75
-                    key = f"pre:{sym}:{int(datetime.utcnow().timestamp())//300}"
+                    key = f"pre:{sym}:{int(datetime.now(UTC).timestamp())//300}"
                     if key not in last_pre and strength >= MIN_STRENGTH:
                         msg = format_pre_entry_message(sym, "5m", eta, strength, est_entry)
                         send_message(msg)
-                        last_pre[key] = datetime.utcnow()
+                        last_pre[key] = datetime.now(UTC)
 
                 # основний сигнал
                 sig = generate_signal(df5i, df15i)
@@ -115,15 +120,18 @@ def background_loop():
                     uid = f"{sym}:{sig['signal']}:{int(sig['entry']*100000)}"
                     if uid in sent:
                         continue
+
                     save_signal(sym, "5m", sig)
                     os.makedirs("charts", exist_ok=True)
                     chart_path = f"charts/{sym.replace('/','_')}.png"
+
                     try:
                         plot_signal_chart(df5i.tail(200), sym, entry=sig['entry'],
                                           sl=sig['sl'], tps=sig['tps'], out_path=chart_path)
                     except Exception as e:
                         print("Chart error", e)
                         chart_path = None
+
                     msg = format_signal_message(sym, "5m", sig)
                     if chart_path:
                         send_photo(chart_path, caption=msg)
@@ -132,6 +140,7 @@ def background_loop():
                     sent.add(uid)
             except Exception as e:
                 print("Main loop error for", sym, e)
+
         time.sleep(CHECK_INTERVAL_SECONDS)
 
 
@@ -140,4 +149,5 @@ if __name__ == "__main__":
     t.start()
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
