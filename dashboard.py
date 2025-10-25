@@ -36,3 +36,16 @@ def home():
 
 if __name__ == "__main__":
     APP.run(host=DASHBOARD_HOST, port=DASHBOARD_PORT, debug=False)
+
+@APP.route("/metrics")
+def metrics():
+    con = sqlite3.connect(SQLITE_PATH)
+    cur = con.cursor()
+    cur.execute("SELECT COUNT(*) FROM events WHERE event='OPEN'")
+    opens = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM events WHERE event LIKE 'TP%'")
+    tps = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM events WHERE event IN ('SL','TRAIL')")
+    stops = cur.fetchone()[0]
+    con.close()
+    return f"bot_opens {opens}\nbot_tp {tps}\nbot_stops {stops}\n", 200, {"Content-Type":"text/plain; version=0.0.4"}
