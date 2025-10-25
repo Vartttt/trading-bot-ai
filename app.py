@@ -187,6 +187,11 @@ def main():
             log_event("ERROR", extra=str(e))
             time.sleep(CHECK_INTERVAL_SEC)
 
+# якщо ти вже маєш Flask-додаток для health — додай ще готовність:
+@app.route("/ready")
+def ready():
+    return "READY", 200
+
 if __name__ == "__main__":
     main()
 
