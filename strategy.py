@@ -19,10 +19,8 @@ def hybrid_signal(df):
     side_ai, conf_ai = compute_ai_signal(df)
     row = latest_row(df)
     side_ta = "LONG" if row["ema_fast"] > row["ema_slow"] else "SHORT"
-    # узгодження напрямків
     if side_ai == side_ta:
         conf = min(1.0, conf_ai + 0.15)
     else:
         conf = max(0.0, conf_ai - 0.10)
     return side_ai if side_ai != "FLAT" else side_ta, conf
-
