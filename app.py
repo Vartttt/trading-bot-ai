@@ -1,129 +1,194 @@
-# app.py
-import threading
-import time
-import os
+from validate import ensure_env
+# ...
+def main():
+    ensure_env()
+    # далі як у тебе
+
+import time, traceback, math
 from datetime import datetime, timezone
-from flask import Flask, jsonify
 
-app = Flask(__name__)
+from config import SYMBOLS, TIMEFRAME, CHECK_INTERVAL_SEC, MAX_OPEN_TRADES, TP_PCTS, TP_SIZES, SL_PCT, TRAIL_START_PCT, TRAIL_STEP_PCT, ATR_MULT
+from exchange import create_exchange
+from indicators import df_from_ohlcv, add_indicators, latest_row
+from risk import position_size_usd, side_to_ccxt
+from strategy import compute_signal_with_mtf, choose_leverage
+from telegram_bot import notify
+from learner import record_tp, record_sl
+from logger import log_event
+from market_utils import quantize_amount, quantize_price   # ✅ ДОДАНО
 
-# --- безпечне підключення модулів ---
-try:
-    from data_fetcher import fetch_ohlcv
-    from strategy import compute_indicators, generate_signal
-    from notifier.telegram_notifier import send_message, send_photo
-    from persistence import init_db, save_signal
-    from utils import plot_signal_chart
-    from config import TOP_MANUAL_PAIRS, CHECK_INTERVAL_SECONDS, MIN_STRENGTH
-    print("✅ Modules imported successfully")
-except Exception as e:
-    print("❌ Import error:", e)
-    # Заглушки, якщо щось не імпортується
-    fetch_ohlcv = compute_indicators = generate_signal = lambda *a, **k: None
-    send_message = send_photo = lambda *a, **k: None
-    init_db = save_signal = plot_signal_chart = lambda *a, **k: None
-    TOP_MANUAL_PAIRS, CHECK_INTERVAL_SECONDS, MIN_STRENGTH = [], 60, 70
+def now_utc():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-# --- Web ---
-@app.route("/")
-def home():
-    return "🚀 Trading Signal Bot is running!"
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok", "time": datetime.now(timezone.utc).isoformat()})
-
-
-# --- Формування сигналу ---
-def format_signal_message(symbol, timeframe, sig):
-    if sig["signal"] == "LONG":
-        head = f"🟢🔥 <b>{symbol} {timeframe}</b>\n<b>СТАТУС:</b> LONG {sig['strength']}%\n"
-        accent = "🟢🚀"
+def atr_trailing_stop(entry, side, atr_value, last):
+    """ATR-базований стоп: entry -/+ ATR_MULT * ATR."""
+    if atr_value is None or math.isnan(atr_value):
+        return None
+    if side == "LONG":
+        return max(entry * (1 - SL_PCT), last - ATR_MULT * atr_value)
     else:
-        head = f"🔴💥 <b>{symbol} {timeframe}</b>\n<b>СТАТУС:</b> SHORT {sig['strength']}%\n"
-        accent = "🔴⚡️"
+        return min(entry * (1 + SL_PCT), last + ATR_MULT * atr_value)
 
-    msg = (
-        f"{head}\n"
-        f"<b>Вхід:</b> <code>{sig['entry']:.6g}</code>\n"
-        f"<b>SL:</b> <code>{sig['sl']:.6g}</code>\n"
-    )
+def make_targets(entry: float, side: str):
+    sign = 1 if side == "LONG" else -1
+    tps = [entry * (1 + sign * p) for p in TP_PCTS]
+    sl  = entry * (1 - sign * SL_PCT)
+    return tps, sl
 
-    # Додаємо take-profit рівні
-    probs = [sig["strength"], max(sig["strength"]-5, 60), max(sig["strength"]-15, 50)]
-    for i, tp in enumerate(sig["tps"], start=1):
-        msg += f"<b>TP{i}:</b> <code>{tp:.6g}</code> ({probs[i-1]}%)\n"
+def update_trailing(trail: dict, last: float, side: str, atr_stop: float | None):
+    """trail = {"active":bool,"stop":price} — якщо є atr_stop, віддаємо пріоритет йому."""
+    if atr_stop is not None:
+        trail["stop"] = atr_stop
+        trail["active"] = True
+        return trail
 
-    msg += "\n<b>Тривалість:</b> 3h15m ⏱\n"
-    msg += f"{accent} <b>Good luck — trade safe!</b>\n"
+    # fallback: фіксований крок
+    if not trail["active"]:
+        return trail
+    step = TRAIL_STEP_PCT
+    if side == "LONG":
+        desired = last * (1 - step)
+        if trail["stop"] is None or desired > trail["stop"]:
+            trail["stop"] = desired
+    else:
+        desired = last * (1 + step)
+        if trail["stop"] is None or desired < trail["stop"]:
+            trail["stop"] = desired
+    return trail
 
-    return msg
+def main():
+    ex = create_exchange()
+    notify("🤖 MEXC Smart Bot started (TPs, ATR-Trailing, MTF 15m/1h/4h, SQLite logs).")
+    log_event("START", extra="bot online")
 
-
-# --- Основний процес ---
-def background_loop():
-    try:
-        init_db()
-    except Exception as e:
-        print("DB init error:", e)
-
-    sent = set()
+    open_positions = {}
 
     while True:
-        for sym in TOP_MANUAL_PAIRS:
-            try:
-                df5 = fetch_ohlcv(sym, timeframe="5m", limit=200)
-                df15 = fetch_ohlcv(sym, timeframe="15m", limit=200)
-            except Exception as e:
-                print("Fetch error", sym, e)
-                continue
+        try:
+            balance = ex.fetch_balance(params={"type":"swap"})
+            total_usdt = balance["total"].get("USDT", 0)
+            free_usdt = balance["free"].get("USDT", 0)
 
-            try:
-                df5i = compute_indicators(df5)
-                df15i = compute_indicators(df15)
-                sig = generate_signal(df5i, df15i)
-            except Exception as e:
-                print("Signal error", sym, e)
-                continue
+            for symbol in SYMBOLS:
+                ticker = ex.fetch_ticker(symbol, params={"type":"swap"})
+                last = ticker["last"]
 
-            if not sig or sig["strength"] < MIN_STRENGTH:
-                continue
+                # === Менеджмент існуючої позиції
+                if symbol in open_positions:
+                    pos = open_positions[symbol]
+                    side = pos["side"]
 
-            uid = f"{sym}:{sig['signal']}:{int(sig['entry']*100000)}"
-            if uid in sent:
-                continue
+                    # ATR stop оновлення
+                    atr_val = pos.get("atr")
+                    if atr_val is not None:
+                        atr_stop = atr_trailing_stop(pos["entry"], side, atr_val, last)
+                    else:
+                        atr_stop = None
 
-            save_signal(sym, "5m", sig)
-            os.makedirs("charts", exist_ok=True)
-            chart_path = f"charts/{sym.replace('/','_')}.png"
+                    # активація трейла при профіті
+                    if not pos["trail"]["active"]:
+                        if (side == "LONG" and last >= pos["entry"] * (1 + TRAIL_START_PCT)) or \
+                           (side == "SHORT" and last <= pos["entry"] * (1 - TRAIL_START_PCT)):
+                            pos["trail"]["active"] = True
 
-            try:
-                plot_signal_chart(df5i.tail(200), sym, entry=sig['entry'],
-                                  sl=sig['sl'], tps=sig['tps'], out_path=chart_path)
-            except Exception as e:
-                print("Chart error", e)
-                chart_path = None
+                    pos["trail"] = update_trailing(pos["trail"], last, side, atr_stop)
 
-            msg = format_signal_message(sym, "5m", sig)
-            try:
-                if chart_path:
-                    send_photo(chart_path, caption=msg)
-                else:
-                    send_message(msg)
-                print(f"✅ Sent signal: {sym} {sig['signal']} ({sig['strength']}%)")
-            except Exception as e:
-                print("Telegram send error:", e)
+                    # Часткові TP
+                    for i, tp_price in enumerate(pos["tps"]):
+                        if not pos["tp_hit"][i]:
+                            hit = (last >= tp_price) if side == "LONG" else (last <= tp_price)
+                            if hit and pos["amount"] > 0:
+                                size = pos["amount"] * TP_SIZES[i]
+                                size = float(quantize_amount(ex, symbol, size))   # ✅ округлення під крок
+                                if size > 0:
+                                    reduce_side = "sell" if side == "LONG" else "buy"
+                                    ex.create_order(symbol, "market", reduce_side, size, None, params={"reduceOnly": True, "type":"swap"})
+                                    pos["amount"] -= size
+                                    pos["tp_hit"][i] = True
+                                    notify(f"✅ TP{i+1} hit {symbol} {side} @ {last:.4f}")
+                                    log_event(f"TP{i+1}", symbol, side, last, size)
+                                    record_tp()
 
-            sent.add(uid)
+                    # Закриття по трейлу/SL
+                    stop = pos["trail"]["stop"] if pos["trail"]["active"] and pos["trail"]["stop"] else pos["sl"]
+                    stop_hit = (last <= stop) if side == "LONG" else (last >= stop)
+                    if stop_hit and pos["amount"] > 0:
+                        reduce_side = "sell" if side == "LONG" else "buy"
+                        amt = float(quantize_amount(ex, symbol, pos["amount"]))  # ✅ округлення
+                        if amt > 0:
+                            ex.create_order(symbol, "market", reduce_side, amt, None, params={"reduceOnly": True, "type":"swap"})
+                        pnl_note = "TRAIL" if (pos["trail"]["active"] and pos["trail"]["stop"]) else "SL"
+                        notify(f"⛔ {pnl_note} exit {symbol} {side} @ {last:.4f}")
+                        log_event(pnl_note, symbol, side, last, amt)
+                        record_sl() if pnl_note == "SL" else record_tp()
+                        del open_positions[symbol]
+                        continue
 
-        time.sleep(CHECK_INTERVAL_SECONDS)
+                    if pos["amount"] <= 1e-12:
+                        notify(f"📘 Position fully closed {symbol}")
+                        log_event("FLAT", symbol, side)
+                        del open_positions[symbol]
+                        continue
 
+                    continue  # менеджмент завершено
 
-# --- Запуск ---
+                # === Відкриття нової позиції
+                if len(open_positions) >= MAX_OPEN_TRADES or free_usdt < 10:
+                    continue
+
+                ohlcv = ex.fetch_ohlcv(symbol, timeframe=TIMEFRAME, limit=400, params={"type":"swap"})
+                df15 = add_indicators(df_from_ohlcv(ohlcv))
+                side, conf, (bias1, bias2) = compute_signal_with_mtf(ex, symbol, df15)
+                lev, thr = choose_leverage(conf)
+
+                notional = position_size_usd(total_usdt) * lev
+                price = last
+                amount = notional / price
+
+                # округлення amount під крок біржі
+                amount = float(quantize_amount(ex, symbol, amount))       # ✅
+                price_q = float(quantize_price(ex, symbol, price))        # (на майбутнє для ліміток)
+
+                if amount <= 0:
+                    continue
+
+                try:
+                    ex.set_leverage(lev, symbol, params={"type":"swap"})
+                except Exception:
+                    pass
+
+                order_side = side_to_ccxt(side)
+                ex.create_order(symbol, "market", order_side, amount, None, params={"type":"swap"})
+
+                # ATR зі свічок 15m
+                atr_val = float(latest_row(df15)["atr"]) if "atr" in df15.columns else None
+                tps, sl = make_targets(price, side)
+                trail_stop = atr_trailing_stop(price, side, atr_val, last)
+
+                open_positions[symbol] = {
+                    "side": side,
+                    "entry": price,
+                    "amount": amount,
+                    "leverage": lev,
+                    "tps": tps,
+                    "tp_hit": [False]*len(tps),
+                    "sl": sl,
+                    "trail": {"active": False, "stop": trail_stop},  # одразу ATR-стоп, якщо є
+                    "atr": atr_val,
+                }
+
+                notify(f"📈 Open {side} {symbol} @ {price:.4f} | conf={conf:.2f} thr={thr:.2f} lev=x{lev} | bias {bias1}/{bias2}")
+                log_event("OPEN", symbol, side, price, amount, extra=f"conf={conf:.2f},lev=x{lev},bias={bias1}/{bias2}")
+
+            time.sleep(CHECK_INTERVAL_SEC)
+
+        except Exception as e:
+            notify(f"⚠️ Loop error: {e}")
+            log_event("ERROR", extra=str(e))
+            time.sleep(CHECK_INTERVAL_SEC)
+
 if __name__ == "__main__":
-    t = threading.Thread(target=background_loop, daemon=True)
-    t.start()
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    main()
+
 
 
