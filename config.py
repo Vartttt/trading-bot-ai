@@ -22,3 +22,14 @@ SL_ATR_MULT = 1.0
 # Telegram formatting
 TIMEFRAME_LABEL = "5m"  # primary TF for signals
 
+# ліміти ризику на сесію/день
+DAILY_MAX_LOSS_PCT = 0.05        # 5% від балансу — стоп-день
+MAX_TRADES_PER_SYMBOL = 3        # захист від овертрейдингу
+LOSS_COOLDOWN_MIN = 20           # пауза в хвилинах після SL
+
+# обмеження ковзання/ринкових умов
+MAX_SPREAD_PCT = 0.002           # 0.2% макс спред
+MAX_MARKET_IMPACT_PCT = 0.003    # не відправляти ордер, якщо рух аномальний
+
+# лог рівень
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
