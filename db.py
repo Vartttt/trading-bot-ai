@@ -36,3 +36,7 @@ def insert_event(ts, event, symbol="", side="", price=None, amount=None, pnl=Non
             "INSERT INTO events(ts,event,symbol,side,price,amount,pnl,extra) VALUES(?,?,?,?,?,?,?,?)",
             (ts, event, symbol, side, price, amount, pnl, extra)
         )
+
+from obs import jlog
+jlog("INFO", "open_position", symbol=symbol, side=side, price=price)
+jlog("ERROR", "telegram_fail", detail=str(e))
