@@ -12,6 +12,6 @@ def build_features(df: pd.DataFrame) -> np.ndarray:
     df["vol_change"] = df["volume"].pct_change()
     df["price_change"] = df["close"].pct_change()
     df.dropna(inplace=True)
-    # вибираємо останній рядок (або кілька)
     features = df[["ema_fast","ema_slow","rsi","macd","atr","vol_change","price_change"]].iloc[-1].values
     return features
+
