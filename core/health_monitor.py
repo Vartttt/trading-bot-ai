@@ -1,14 +1,23 @@
 """
-ExchangeHealthGuard: простий перевіряльник доступності біржі.
-- ping через fetch_ticker BTC/USDT
-- якщо помилка/затримка — повертає False (пауза циклу)
+Health Monitor — перевіряє доступність біржі й API latency.
 """
-import time
+import time, statistics
+from notifier.telegram_notifier import send_message
 
-def exchange_ok(ex, symbol="BTC/USDT", timeout=2.5):
-    t0 = time.time()
+PING_HISTORY = []
+
+def ping_exchange(ex):
     try:
-        ex.fetch_ticker(symbol)
-        return (time.time() - t0) < timeout
-    except Exception:
+        t0 = time.time()
+        ex.fetch_ticker("BTC/USDT")
+        dt = (time.time() - t0)
+        PING_HISTORY.append(dt)
+        if len(PING_HISTORY) > 20:
+            PING_HISTORY.pop(0)
+        avg = statistics.mean(PING_HISTORY)
+        if dt > avg * 2 or dt > 2.0:
+            send_message(f"⚠️ High latency detected: {dt:.2f}s (avg={avg:.2f}s)")
+        return True
+    except Exception as e:
+        send_message(f"🚫 Exchange connection error: {e}")
         return False
