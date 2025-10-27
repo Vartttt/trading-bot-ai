@@ -41,3 +41,24 @@ def check_exposure(symbol: str) -> tuple[bool, str]:
         if fam_count >= MAX_FAMILY_POS:
             return False, f"max_family_positions({fam})"
         return True, "ok"
+
+"""
+Exposure Guard — обмеження кількості позицій у схожих активах або сім’ях.
+"""
+import os, json
+
+OPEN_POS_FILE = "state/open_positions.json"
+MAX_GLOBAL_POS = int(os.getenv("MAX_GLOBAL_POS", "5"))
+
+def check_exposure(symbol):
+    if not os.path.exists(OPEN_POS_FILE): 
+        return True, "no positions"
+    try:
+        pos = json.load(open(OPEN_POS_FILE))
+    except:
+        return True, "no positions"
+    if len(pos) >= MAX_GLOBAL_POS:
+        return False, f"too many positions ({len(pos)}/{MAX_GLOBAL_POS})"
+    if symbol in pos:
+        return False, "already open"
+    return True, "ok"
