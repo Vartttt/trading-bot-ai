@@ -27,3 +27,7 @@ def plot_phase_timeline(days=7, out_path="charts/phase_timeline.png"):
     phase_map = {"BULL_TREND":3,"BEAR_TREND":-3,"RANGE_HIGH_VOL":1,"RANGE_LOW_VOL":0,"SPIKE_EVENT":2,"UNKNOWN":0}
     xs = [r["ts"] for r in hist]; ys = [phase_map.get(r.get("phase","UNKNOWN"),0) for r in hist]
     plt.figure(figsize=(9,4))
+    plt.plot(xs, ys, linewidth=1.8)
+    plt.title(f"Market Phase Timeline (last {days} days)")
+    plt.grid(True, alpha=0.3); plt.tight_layout(); plt.savefig(out_path); plt.close()
+    return out_path
