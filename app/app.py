@@ -46,7 +46,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "SmartTraderBot v8.4 Pro Boosted — OK"
+    return "🤖 SmartTraderBot v8.4 Pro Boosted — працює стабільно ✅"
 
 @app.route("/health")
 def health():
