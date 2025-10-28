@@ -1,4 +1,6 @@
+import os
 import ccxt
+
 EXCHANGE = os.getenv("EXCHANGE", "mexc")
 
 # вибір класу біржі з fallback
