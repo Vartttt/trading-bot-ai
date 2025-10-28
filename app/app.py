@@ -18,7 +18,7 @@ from core.trade_manager import open_signal_trade, tick_manage_positions
 from core.trade_switch import is_trading_enabled
 from core.alpha_guards import session_guard, news_guard, funding_guard
 from risk.risk_daily_guard import daily_risk_ok, report_trade_pnl
-from core.health_monitor import ping_exchange  # ✅ Health checker
+from core.health_monitor import exchange_ok
 
 # ------------------ ENV CONFIG ------------------
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))
@@ -76,12 +76,12 @@ def background_loop():
 
     while True:
         try:
-            # ✅ HEALTH CHECK
-            if not ping_exchange(ex):
-                c_errors.inc()
-                send_message("⚠️ Exchange ping failed — pausing cycle.")
-                time.sleep(CHECK_INTERVAL)
-                continue
+            # ✅ HEALTH MONITOR (повна перевірка біржі, latency, балансу та API rate)
+if not exchange_ok(ex):
+    c_errors.inc()
+    send_message("⛔️ Exchange health failed. Pausing one interval.")
+    time.sleep(CHECK_INTERVAL)
+    continue
 
             # 🔁 MARKET PHASE UPDATE
             if time.time() - last_phase_ts > PHASE_REFRESH_MIN * 60:
