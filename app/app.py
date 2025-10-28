@@ -1,7 +1,9 @@
 import os, sys, time, threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify, Response, request  # + request
+import telebot                                       # + telebot
+from notifier.bot_listener import run_bot, bot, BOT_TOKEN  # + bot, BOT_TOKEN
 from prometheus_client import Gauge, Counter, generate_latest, CONTENT_TYPE_LATEST
 
 from core.market_phase import compute_phase_from_df, save_phase_cache, load_phase_cache
@@ -53,6 +55,14 @@ def health():
 @app.route("/metrics")
 def metrics():
     return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    if not bot:
+        return "bot disabled", 200
+    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
+    bot.process_new_updates([update])
+    return "ok", 200
 
 # ------------------ CORE FUNCTIONS ------------------
 def refresh_market_phase(exchange):
