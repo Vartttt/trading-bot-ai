@@ -91,9 +91,11 @@ class ExchangeWrapper:
             if DRY_RUN:
                 # Симуляційний баланс (для тестування)
                 return {"total": {"USDT": 1000}}
-        return self.ex.fetch_balance()
-    except Exception:
-        return {"total": {"USDT": 0}}
+      
+            return self.ex.fetch_balance()
+   
+        except Exception:
+            return {"total": {"USDT": 0}}
 
 
 
