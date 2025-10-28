@@ -115,6 +115,15 @@ if bot:
         )
         bot.reply_to(msg, txt)
 
+    @bot.message_handler(commands=["mode"])
+    def mode_cmd(msg):
+        dry = os.getenv("DRY_RUN", "False").lower() == "true"
+        if dry:
+            bot.reply_to(msg, "🧪 <b>Simulation mode</b> — DRY_RUN=True\n(торгівля не відправляється на біржу)")
+        else:
+            bot.reply_to(msg, "💰 <b>Real trading mode</b> — DRY_RUN=False\n(реальні ордери надсилаються на MEXC)")
+
+
 def run_bot():
     if not bot:
         print("Telegram bot disabled (no TOKEN).")
