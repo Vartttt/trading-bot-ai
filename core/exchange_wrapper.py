@@ -88,15 +88,13 @@ class ExchangeWrapper:
 
     def fetch_balance(self):
     try:
-        # якщо DRY_RUN=True → використовуємо фіктивний баланс
         if DRY_RUN:
-            sim_balance = float(os.getenv("SIM_BALANCE", "1000"))  # значення з .env
-            return {"total": {"USDT": sim_balance}, "free": {"USDT": sim_balance}}
-        # якщо реальний режим → отримуємо з біржі
+            # Симуляційний баланс (для тестування)
+            return {"total": {"USDT": 1000}}
         return self.ex.fetch_balance()
     except Exception:
-        # якщо сталася помилка — повертаємо нульовий баланс
-        return {"total": {"USDT": 0}, "free": {"USDT": 0}}
+        return {"total": {"USDT": 0}}
+
 
 
 
