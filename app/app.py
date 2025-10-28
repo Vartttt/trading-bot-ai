@@ -208,6 +208,10 @@ def background_loop():
             send_message(f"⚠️ Main loop exception: {e}")
             time.sleep(5)
 
+def start_bg():
+    th = threading.Thread(target=background_loop, daemon=True)
+    th.start()
+
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
     start_bg()
