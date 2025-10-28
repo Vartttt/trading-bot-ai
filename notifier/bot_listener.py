@@ -8,6 +8,7 @@ from analytics.equity_report import compute_kpis, plot_equity
 from analytics.tca import log_tca
 from risk.smart_risk_curve import load_stats
 from core.trade_switch import set_trading, is_trading_enabled
+from notifier.lang_ua import UA # ✅ переклад
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML") if BOT_TOKEN else None
