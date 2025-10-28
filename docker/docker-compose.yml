@@ -2,8 +2,13 @@ version: "3.9"
 services:
   smarttraderbot:
     build: .
+    container_name: smarttraderbot_v8_4
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8080:8080"
-    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+      - GUNICORN_CMD_ARGS=--timeout 120
+
 
