@@ -1,13 +1,13 @@
-# core/health_monitor.py
 """
-Health Monitor Pro — перевіряє:
+Health Monitor v8.4 Pro — перевіряє:
   ✅ latency біржі
   ✅ баланс акаунта
   ✅ перевищення API rate-limit
-  ✅ реагує в Telegram при збоях
+  ✅ авто-перезапуск контейнера при збоях
+  ✅ Telegram-сповіщення
 """
 
-import time, statistics, traceback
+import os, time, statistics, traceback, subprocess
 from notifier.telegram_notifier import send_message
 
 # Зберігаємо історію вимірів для динамічного порогу
@@ -15,10 +15,11 @@ PING_HISTORY = []
 API_CALLS = []
 BALANCE_CACHE = {"ts": 0, "value": 0.0}
 
-# --- CONFIG (через ENV або дефолти)
-MAX_LATENCY_SEC = 2.5
-MAX_API_CALLS_PER_MIN = 180     # залежить від біржі (MEXC ≈ 300/min)
-MIN_BALANCE_USDT = 15.0         # нижче цього — стоп
+# --- CONFIG (ENV або дефолти)
+MAX_LATENCY_SEC = float(os.getenv("MAX_LATENCY_SEC", "2.5"))
+MAX_API_CALLS_PER_MIN = int(os.getenv("MAX_API_CALLS_PER_MIN", "180"))
+MIN_BALANCE_USDT = float(os.getenv("MIN_BALANCE_USDT", "15.0"))
+RESTART_FAILS = int(os.getenv("RESTART_FAILS", "3"))  # після 3 фейлів поспіль — restart
 
 def ping_exchange(ex):
     """
@@ -80,16 +81,36 @@ def exchange_ok(ex):
     - викликає ping_exchange()
     - перевіряє баланс
     - перевіряє API rate
+    - перезапускає контейнер при 3 поспіль збоях
     """
     try:
         track_api_call()
-        if not ping_exchange(ex):
+        fails = 0
+
+        for _ in range(RESTART_FAILS):
+            if ping_exchange(ex):
+                ok, usdt = check_balance(ex)
+                if ok:
+                    return True
+                else:
+                    send_message("⛔️ Trading halted — balance check failed.")
+                    return False
+            else:
+                fails += 1
+                time.sleep(3)
+
+        # Якщо 3 поспіль невдалі пінги → auto-restart
+        if fails >= RESTART_FAILS:
+            send_message("🚨 Exchange unreachable 3 times. Restarting container...")
+            try:
+                subprocess.run(["kill", "1"])
+            except Exception as e:
+                send_message(f"⚙️ Restart attempt failed: {e}")
             return False
-        ok, usdt = check_balance(ex)
-        if not ok:
-            send_message("⛔️ Trading halted — balance check failed.")
-            return False
+
         return True
+
     except Exception as e:
         send_message(f"💥 Health monitor error: {traceback.format_exc()}")
         return False
+
