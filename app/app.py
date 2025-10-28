@@ -78,11 +78,11 @@ def background_loop():
     while True:
         try:
             # ✅ HEALTH MONITOR (повна перевірка біржі, latency, балансу та API rate)
-if not exchange_ok(ex):
-    c_errors.inc()
-    send_message("⛔️ Exchange health failed. Pausing one interval.")
-    time.sleep(CHECK_INTERVAL)
-    continue
+            if not exchange_ok(ex):
+                c_errors.inc()
+                send_message("⛔️ Exchange health failed. Pausing one interval.")
+                time.sleep(CHECK_INTERVAL)
+                continue
 
             # 🔁 MARKET PHASE UPDATE
             if time.time() - last_phase_ts > PHASE_REFRESH_MIN * 60:
