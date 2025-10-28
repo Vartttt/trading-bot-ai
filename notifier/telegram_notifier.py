@@ -1,8 +1,11 @@
 """
 Telegram Notifier — універсальний відправник повідомлень у канал / чат.
+Підтримує автоперевірку конфігурації і повідомлення при старті.
 """
-import os, requests
 
+import os, requests, time
+
+# --- Підтримка різних назв змінних середовища ---
 TELEGRAM_BOT_TOKEN = (
     os.getenv("TELEGRAM_BOT_TOKEN")
     or os.getenv("TOKEN_BOT")
@@ -16,10 +19,13 @@ TELEGRAM_CHAT_ID = (
     or ""
 )
 
-
 def send_message(text, parse_mode="HTML", silent=False):
+    """
+    Відправляє повідомлення у Telegram.
+    Якщо токен або ID відсутні — просто виводить у лог.
+    """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("[TG]", text)
+        print("[TG:disabled]", text)
         return
     try:
         payload = {
@@ -34,3 +40,7 @@ def send_message(text, parse_mode="HTML", silent=False):
             print("Telegram error:", r.text)
     except Exception as e:
         print("Telegram exception:", e)
+
+def send_startup_message():
+    ""
+
