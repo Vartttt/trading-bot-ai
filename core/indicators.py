@@ -13,3 +13,7 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     x["atr"] = ta.volatility.AverageTrueRange(x["high"], x["low"], x["close"], 14).average_true_range()
     x.dropna(inplace=True)
     return x
+
+from ai.transformer_trainer import predict_strength
+strength = int(predict_strength(features))
+
