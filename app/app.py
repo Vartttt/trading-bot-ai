@@ -23,7 +23,7 @@ from core.trade_switch import is_trading_enabled
 from core.alpha_guards import session_guard, news_guard, funding_guard
 from risk.risk_daily_guard import daily_risk_ok, report_trade_pnl
 from core.health_monitor import exchange_ok
-from notifier.bot_listener import run_bot
+from notifier.bot_listener import run_bot, bot, BOT_TOKEN
 BASE_URL = os.getenv("URL_ADDRESS", "")  # з середовища Railway                                    
 run_bot()
 
@@ -207,11 +207,6 @@ def background_loop():
             print("main loop error:", e)
             send_message(f"⚠️ Main loop exception: {e}")
             time.sleep(5)
-
-# ------------------ THREAD STARTER ------------------
-def start_bg():
-    th = threading.Thread(target=background_loop, daemon=True)
-    th.start()
 
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
