@@ -128,5 +128,17 @@ def run_bot():
     if not bot:
         print("Telegram bot disabled (no TOKEN).")
         return
-    print("Telegram bot polling…")
-    bot.infinity_polling()
+
+    print("Telegram bot via webhook…")
+
+    # Зняти старий webhook, якщо був
+    bot.remove_webhook()
+
+    # Встановити новий webhook для Railway
+    railway_url = os.getenv("RAILWAY_URL")  # наприклад: https://your-app.up.railway.app
+    if not railway_url:
+        print("⚠️ Missing RAILWAY_URL environment variable.")
+        return
+
+    bot.set_webhook(url=f"{railway_url}/{BOT_TOKEN}")
+
