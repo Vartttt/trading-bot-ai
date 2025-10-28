@@ -25,6 +25,11 @@ from risk.smart_tp_sl_curve import calc_smart_tp_sl
 from core.phase_filter import filter_symbol_phase
 from core.market_phase import load_phase_cache
 from notifier.telegram_notifier import send_message
+# додай імпорт зверху
+from analytics.async_performance_tracker import AsyncPerfTracker
+
+# 1) створити трекер (поруч з engine = AsyncEngine())
+tracker = AsyncPerfTracker()
 
 # --- Конфігурація
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 30))
