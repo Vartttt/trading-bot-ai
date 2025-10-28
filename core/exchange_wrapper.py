@@ -1,9 +1,13 @@
-# Уніфікована обгортка для MEXC USDT-M (mexc3) та Binance Futures (binance)
-import ccxt, os, time
+import ccxt
+EXCHANGE = os.getenv("EXCHANGE", "mexc")
 
-EXCHANGE = os.getenv("EXCHANGE", "mexc3")    # mexc3 | binance
-DEFAULT_TYPE = os.getenv("DEFAULT_TYPE", "swap")
-DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
+# вибір класу біржі з fallback
+if hasattr(ccxt, EXCHANGE):
+    cls = getattr(ccxt, EXCHANGE)
+else:
+    # fallback для старої назви або кастомних
+    cls = getattr(ccxt, "mexc", None) or getattr(ccxt, "mexc3", None)
+
 
 class ExchangeWrapper:
     def __init__(self):
