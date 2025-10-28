@@ -21,9 +21,9 @@ from core.trade_switch import is_trading_enabled
 from core.alpha_guards import session_guard, news_guard, funding_guard
 from risk.risk_daily_guard import daily_risk_ok, report_trade_pnl
 from core.health_monitor import exchange_ok
-from notifier.bot_listener import setup_webhook
-BASE_URL = os.getenv("URL_ADDRESS", "")  # з середовища Railway
-setup_webhook(BASE_URL)
+from notifier.bot_listener import run_bot
+BASE_URL = os.getenv("URL_ADDRESS", "")  # з середовища Railway                                    
+run_bot()
 
 # ------------------ ENV CONFIG ------------------
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))
