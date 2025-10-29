@@ -167,4 +167,4 @@ def predict_strength(features_dict: dict) -> float:
 
 
 if __name__ == "__main__":
-    train_transformer(epochs=15)
+    train_transformer(epochs=15, seg_len=10)
