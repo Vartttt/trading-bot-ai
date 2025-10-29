@@ -106,7 +106,10 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
 
     data = json.load(open(TRAIN_DATA_PATH))
     df = pd.DataFrame(data)
-
+    print(f"🧾 Структура DataFrame: {df.shape}")
+    print("🔑 Колонки:", df.columns.tolist())
+    print(df.head(3))
+    
     features = ["ema_diff5", "rsi5", "atr", "volz5", "strength"]
     df = df[features].fillna(0)
     print(f"📊 Рядків до тренування: {len(df)}")
