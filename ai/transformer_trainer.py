@@ -116,7 +116,9 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     dump(scaler, SCALER_PATH)
 
     dataset = SignalDataset(X_scaled, seq_len)
-     
+    print(f"📊 Кількість рядків у DataFrame: {len(df)}")
+    print(f"📏 Довжина dataset після формування: {len(dataset)} (seq_len={seq_len})")
+
     # 🛠 Перевірка на порожній датасет
     if len(dataset) == 0:
         print(f"⚠️ Dataset порожній! Довжина даних: {len(X_scaled)}, а seq_len={seq_len}.")
