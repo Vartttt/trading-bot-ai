@@ -97,6 +97,7 @@ class SignalTransformer(nn.Module):
 # ⚙️ Train / Save
 # ============================================================
 def train_transformer(epochs=10, batch_size=32, seq_len=50):
+
     if not os.path.exists(TRAIN_DATA_PATH):
         print("⚠️ Немає train_data.json — спочатку згенеруй історію сигналів.")
         return
@@ -112,6 +113,11 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     print(f"🧾 Структура DataFrame: {df.shape}")
     print("🔑 Колонки:", df.columns.tolist())
     print(df.head(3))
+
+    # 🔧 Нормалізація strength у діапазон [0, 1]
+    if df["strength"].max() > 1 or df["strength"].min() < 0:
+        print("⚙️ Strength виходить за межі [0,1], виконуємо нормалізацію...")
+        df["strength"] = (df["strength"] - df["strength"].min()) / (df["strength"].max() - df["strength"].min())
 
     features = ["ema_diff5", "rsi5", "atr", "volz5", "strength"]
     df = df[features].fillna(0)
