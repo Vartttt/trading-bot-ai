@@ -148,7 +148,7 @@ def refresh_market_phase(exchange):
         x4 = enrich(df4h) if df4h is not None and not df4h.empty else None
         rec = compute_phase_from_df(x1, x4)
         save_phase_cache(rec)
-        send_message(f"🛰 Market Phase updated: {rec['phase']} | Regime: {rec['regime']}")
+        send_message(f"🛰 Фаза ринку оновлена: {rec['phase']} | Режим: {rec['regime']}")
     except Exception as e:
         c_errors.inc()
         print("phase refresh error:", e)
@@ -159,7 +159,7 @@ def background_loop():
     last_phase_ts = 0
     last_opt_ts = 0
 
-    send_message("🤖 SmartTraderBot v8.4 Boosted started successfully.")
+    send_message("🤖 SmartTraderBot v8.4 Boosted успішно запущено та працює стабільно ✅")
 
     while True:
         try:
@@ -180,7 +180,7 @@ def background_loop():
             if time.time() - last_opt_ts > 7200:
                 try:
                     new_w = optimize_weights()
-                    send_message(f"🧠 Auto-optimized indicator weights: {new_w}")
+                    send_message(f"🧠 Автоматично оптимізовані ваги індикаторів: {new_w}")
                     last_opt_ts = time.time()
                 except Exception as oe:
                     c_errors.inc()
@@ -241,10 +241,10 @@ def background_loop():
                             continue
 
                         send_message(
-                            f"📊 <b>{sym}</b> | Strength: <b>{strength}%</b> dir={direction}\n"
-                            f"Phase: {local_phase} ({mult}x {comment}) | Global: {global_phase.get('phase')}\n"
-                            f"Risk: {risk_mode} ({risk_pct*100:.2f}%) | ATR={data['atr']:.5f}\n"
-                            f"TP≈{tp_off:.5f} | SL≈{sl_off:.5f} | stats={stats}"
+                            f"📊 <b>{sym}</b> | Сила сигналу: <b>{strength}%</b> напрям: {direction}\n"
+                            f"Фаза: {local_phase} ({mult}x {comment}) | Глобальна: {global_phase.get('phase')}\n"
+                            f"Ризик: {risk_mode} ({risk_pct*100:.2f}%) | ATR={data['atr']:.5f}\n"
+                            f"TP≈{tp_off:.5f} | SL≈{sl_off:.5f} | статистика={stats}"
                         )
 
                         # TRADE EXECUTION
@@ -263,7 +263,7 @@ def background_loop():
                                     report_trade_pnl(0.0)
                             except Exception as te:
                                 c_errors.inc()
-                                send_message(f"❌ Trade open error for {sym}: {te}")
+                                send_message(f"❌ Помилка відкриття угоди для {sym}: {te}")
                 except Exception as se:
                     c_errors.inc()
                     print("symbol error", sym, se)
