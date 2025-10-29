@@ -122,12 +122,21 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     print(f"📊 Кількість рядків у DataFrame: {len(df)}")
     print(f"📏 Довжина dataset після формування: {len(dataset)} (seq_len={seq_len})")
 
-    # 🛠 Перевірка на порожній датасет
+    # 🧩 Перевірка + автопідбір seq_len якщо даних замало
     if len(dataset) == 0:
-        print(f"⚠️ Dataset порожній! Довжина даних: {len(X_scaled)}, а seq_len={seq_len}.")
-        print("   Переконайся, що у train_data.json достатньо рядків і колонки збігаються з features.")
-        return
-    
+        print(f"⚠️ Dataset порожній при seq_len={seq_len}. Спробую зменшити.")
+        if len(X_scaled) > 5:
+            seq_len = max(2, len(X_scaled) // 3)
+            print(f"🔁 Новий seq_len: {seq_len}")
+            dataset = SignalDataset(X_scaled, seq_len)
+            print(f"📊 Новий розмір dataset: {len(dataset)}")
+            if len(dataset) == 0:
+                print("❌ Все одно порожній — замало даних.")
+                return
+        else:
+            print("❌ Замало рядків у train_data.json для навчання.")
+            return
+
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = SignalTransformer(input_dim=len(features) - 1)
