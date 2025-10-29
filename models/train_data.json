@@ -1,0 +1,22 @@
+[
+  {"ema_diff5":0.002, "rsi5":55, "atr":0.0015, "volz5":0.2, "strength":0.8},
+  {"ema_diff5":-0.001, "rsi5":45, "atr":0.0012, "volz5":-0.1, "strength":0.3},
+  {"ema_diff5":0.003, "rsi5":65, "atr":0.0017, "volz5":0.4, "strength":0.9},
+  {"ema_diff5":-0.002, "rsi5":35, "atr":0.0014, "volz5":-0.3, "strength":0.2},
+  {"ema_diff5":0.001, "rsi5":50, "atr":0.0011, "volz5":0.0, "strength":0.5},
+  {"ema_diff5":0.004, "rsi5":70, "atr":0.0019, "volz5":0.5, "strength":0.95},
+  {"ema_diff5":-0.003, "rsi5":30, "atr":0.0016, "volz5":-0.5, "strength":0.15},
+  {"ema_diff5":0.0025, "rsi5":60, "atr":0.0013, "volz5":0.3, "strength":0.75},
+  {"ema_diff5":-0.0015, "rsi5":40, "atr":0.0018, "volz5":-0.2, "strength":0.4},
+  {"ema_diff5":0.0008, "rsi5":52, "atr":0.001, "volz5":0.1, "strength":0.55},
+  {"ema_diff5":-0.0022, "rsi5":33, "atr":0.0015, "volz5":-0.35, "strength":0.25},
+  {"ema_diff5":0.0035, "rsi5":68, "atr":0.0019, "volz5":0.45, "strength":0.92},
+  {"ema_diff5":-0.0009, "rsi5":48, "atr":0.0012, "volz5":-0.05, "strength":0.48},
+  {"ema_diff5":0.0028, "rsi5":63, "atr":0.0016, "volz5":0.35, "strength":0.82},
+  {"ema_diff5":-0.0018, "rsi5":42, "atr":0.0014, "volz5":-0.25, "strength":0.35},
+  {"ema_diff5":0.0042, "rsi5":72, "atr":0.002, "volz5":0.6, "strength":0.98},
+  {"ema_diff5":-0.0027, "rsi5":28, "atr":0.0017, "volz5":-0.55, "strength":0.1},
+  {"ema_diff5":0.0015, "rsi5":58, "atr":0.0013, "volz5":0.25, "strength":0.68},
+  {"ema_diff5":-0.0011, "rsi5":46, "atr":0.0015, "volz5":-0.15, "strength":0.43},
+  {"ema_diff5":0.003, "rsi5":66, "atr":0.0018, "volz5":0.38, "strength":0.88}
+]
