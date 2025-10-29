@@ -60,9 +60,6 @@ class SignalDataset(Dataset):
         self.X = np.array(X, dtype=np.float32)
         self.y = np.array(y, dtype=np.float32)
 
-    # Гарантуємо, що всі цілі в межах [0, 1]
-    self.y = np.clip(self.y, 0.0, 1.0)
-
     def __len__(self):
         return len(self.X)
 
