@@ -126,6 +126,11 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     df = df[features].fillna(0)
     print(f"📊 Рядків до тренування: {len(df)}")
 
+    # Нормалізація значень strength у діапазон [0, 1]
+    if df["strength"].max() > 1 or df["strength"].min() < 0:
+        print("⚙️ Нормалізую strength у діапазон [0, 1] ...")
+        df["strength"] = (df["strength"] - df["strength"].min()) / (df["strength"].max() - df["strength"].min())
+
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df.values)
     dump(scaler, SCALER_PATH)
