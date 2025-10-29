@@ -60,6 +60,9 @@ class SignalDataset(Dataset):
         self.X = np.array(X, dtype=np.float32)
         self.y = np.array(y, dtype=np.float32)
 
+    # Гарантуємо, що всі цілі в межах [0, 1]
+    self.y = np.clip(self.y, 0.0, 1.0)
+
     def __len__(self):
         return len(self.X)
 
@@ -134,6 +137,11 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df.values)
     dump(scaler, SCALER_PATH)
+
+    # Перевірка коректності даних strength
+    if (df["strength"] < 0).any() or (df["strength"] > 1).any():
+        print("⚠️ Виправляю значення strength у межах [0,1]")
+        df["strength"] = np.clip(df["strength"], 0, 1)
 
     dataset = SignalDataset(X_scaled, seq_len)
     print(f"📏 Довжина dataset після формування: {len(dataset)}")
