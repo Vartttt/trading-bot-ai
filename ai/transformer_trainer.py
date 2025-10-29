@@ -115,6 +115,13 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     dump(scaler, SCALER_PATH)
 
     dataset = SignalDataset(X_scaled, seq_len)
+     
+    # 🛠 Перевірка на порожній датасет
+    if len(dataset) == 0:
+        print(f"⚠️ Dataset порожній! Довжина даних: {len(X_scaled)}, а seq_len={seq_len}.")
+        print("   Переконайся, що у train_data.json достатньо рядків і колонки збігаються з features.")
+        return
+    
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = SignalTransformer(input_dim=len(features) - 1)
