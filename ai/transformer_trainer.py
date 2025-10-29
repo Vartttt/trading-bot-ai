@@ -150,7 +150,7 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = SignalTransformer(input_dim=len(features) - 1)
-    criterion = nn.BCELoss()
+    criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for epoch in range(epochs):
