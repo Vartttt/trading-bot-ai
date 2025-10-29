@@ -81,8 +81,7 @@ class SignalTransformer(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(embed_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
