@@ -1,16 +1,37 @@
-"""
-Transformer Trainer — модуль навчання нейронної моделі
-для прогнозу сили сигналу (signal_strength).
-
-🧠 Використовує:
- - OHLCV дані (5m, 15m, 1h)
- - EMA, RSI, MACD, ATR
- - минулі PnL, Win/Loss мітки
-"""
-
+# ==============================
+# ✅ UNIVERSAL IMPORT & MODEL_DIR HANDLER
+# ==============================
 import os
 import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# Поточна директорія файлу (ai/)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Коренева директорія проєкту (/workspaces/)
+root_dir = os.path.abspath(os.path.join(current_dir, ".."))
+
+# Додаємо root у sys.path
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+# Імпорт конфігурації (config/config.py)
+try:
+    from config.config import MODEL_DIR
+except ModuleNotFoundError as e:
+    print("⚠️  Не знайдено модуль 'config'. Спробую додати шлях вручну...")
+    sys.path.append(os.path.join(root_dir, "config"))
+    from config import config
+    MODEL_DIR = getattr(config, "MODEL_DIR", os.path.join(root_dir, "models"))
+    print("✅ MODEL_DIR імпортовано після ручного додавання шляху.")
+
+# Перевіряємо існування MODEL_DIR
+    print(f"📁 Створено директорію MODEL_DIR: {MODEL_DIR}")
+
+print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
+# ==============================
+# 🔚 END OF UNIVERSAL IMPORT FIX
+# ==============================
+
 
 import json
 import numpy as np
@@ -20,7 +41,6 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import StandardScaler
 from joblib import dump, load
-from config.config import MODEL_DIR
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
