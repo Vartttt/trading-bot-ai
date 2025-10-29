@@ -46,4 +46,8 @@ ENABLE_FUNDING_FILTER = os.getenv("ENABLE_FUNDING_FILTER", "true").lower() == "t
 ENABLE_SESSION_GUARD = os.getenv("ENABLE_SESSION_GUARD", "true").lower() == "true"
 
 # === Створення директорії моделі (на випадок відсутності) ===
-os.makedirs(MODEL_DIR, exist_ok=True)
+try:
+    os.makedirs(MODEL_DIR, exist_ok=True)
+except FileExistsError:
+    pass
+
