@@ -109,6 +109,7 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
 
     features = ["ema_diff5", "rsi5", "atr", "volz5", "strength"]
     df = df[features].fillna(0)
+    print(f"📊 Рядків до тренування: {len(df)}")
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(df.values)
