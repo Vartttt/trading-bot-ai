@@ -65,6 +65,79 @@ def _close_market(ex, symbol: str, side_long: bool, amount: float):
         # in DRY mode wrapper already “fills”
         pass
 
+# ------------------------ adaptive protection layer --------------------------
+
+import statistics
+
+# ⚙️ Параметри безпеки
+SAFE_LATENCY_LIMIT = 0.6   # якщо середня затримка більша — увімкнути Safe Mode
+LATENCY_RECOVERY = 0.25    # поріг стабілізації
+COOLDOWN_SECONDS = 600     # 10 хвилин паузи після збиткової угоди
+MAX_DRAWDOWN_DAY = -3.0    # денною просадка в % для активації зниження ризику
+
+safe_mode = False
+latency_log = []
+cooldowns = {}
+phase_stats = {}  # { 'BULL_TREND': {'win':0,'loss':0}, ... }
+
+def update_latency(latency: float):
+    """Оновлює середню затримку та керує Safe Mode."""
+    global safe_mode
+    latency_log.append(latency)
+    if len(latency_log) > 20:
+        latency_log.pop(0)
+    avg_latency = statistics.mean(latency_log)
+
+    if avg_latency > SAFE_LATENCY_LIMIT and not safe_mode:
+        safe_mode = True
+        send_message(f"⚠️ <b>Безпечний режим увімкнено</b> — висока затримка ({avg_latency:.2f} с). Торгівля призупинена.")
+    elif avg_latency < LATENCY_RECOVERY and safe_mode:
+        safe_mode = False
+        send_message(f"✅ <b>Безпечний режим вимкнено</b> — стабільна затримка ({avg_latency:.2f} с).")
+    return avg_latency, safe_mode
+
+
+def can_trade(symbol: str) -> bool:
+    """Перевіряє, чи можна відкривати нову угоду."""
+    if safe_mode:
+        send_message(f"⏸ Торгівля тимчасово призупинена через високу затримку.")
+        return False
+
+    now = _now()
+    if symbol in cooldowns and now - cooldowns[symbol] < COOLDOWN_SECONDS:
+        left = COOLDOWN_SECONDS - (now - cooldowns[symbol])
+        send_message(f"🕒 Пауза для {symbol}: очікування {int(left)} с після збиткової угоди.")
+        return False
+    return True
+
+
+def register_trade_result(symbol: str, phase: str, profit_pct: float):
+    """Реєструє результат угоди для статистики."""
+    global phase_stats
+    phase = phase or "UNKNOWN"
+    if phase not in phase_stats:
+        phase_stats[phase] = {"win": 0, "loss": 0}
+
+    if profit_pct >= 0:
+        phase_stats[phase]["win"] += 1
+    else:
+        phase_stats[phase]["loss"] += 1
+        cooldowns[symbol] = _now()  # активуємо паузу після збитку
+
+    # Формуємо коротку аналітику
+    total = phase_stats[phase]["win"] + phase_stats[phase]["loss"]
+    winrate = 100 * phase_stats[phase]["win"] / max(total, 1)
+    send_message(f"📊 Фаза {phase}: {winrate:.1f}% виграшних угод ({total} угод).")
+
+
+def adjust_risk_on_drawdown(day_drawdown_pct: float, base_risk: float) -> float:
+    """Автоматично знижує ризик при великій просадці."""
+    if day_drawdown_pct is not None and day_drawdown_pct < MAX_DRAWDOWN_DAY:
+        new_risk = base_risk * 0.5
+        send_message(f"⚠️ Виявлено денною просадку {day_drawdown_pct:.2f}% → ризик знижено до {new_risk*100:.2f}%.")
+        return new_risk
+    return base_risk
+
 def open_signal_trade(
     ex,
     symbol: str,
