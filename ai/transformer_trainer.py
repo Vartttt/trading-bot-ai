@@ -119,6 +119,9 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
         print("⚙️ Strength виходить за межі [0,1], виконуємо нормалізацію...")
         df["strength"] = (df["strength"] - df["strength"].min()) / (df["strength"].max() - df["strength"].min())
 
+    # І навіть якщо не виходить — підстрахуємось
+    df["strength"] = df["strength"].clip(0, 1)
+    
     features = ["ema_diff5", "rsi5", "atr", "volz5", "strength"]
     df = df[features].fillna(0)
     print(f"📊 Рядків до тренування: {len(df)}")
