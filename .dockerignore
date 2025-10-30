@@ -1,0 +1,11 @@
+__pycache__/
+.git
+.gitignore
+*.log
+*.zip
+*.tar.gz
+*.pkl
+*.tmp
+# ❗️ Ось головне — не копіюємо великі файли у Docker
+models/transformer_signal_model.pt
+models/transformer_scaler.joblib
