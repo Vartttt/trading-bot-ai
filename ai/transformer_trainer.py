@@ -81,7 +81,8 @@ class SignalTransformer(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(embed_dim, 64),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
@@ -149,7 +150,7 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     model = SignalTransformer(input_dim=len(features) - 1)
-    criterion = nn.MSELoss()
+    criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for epoch in range(epochs):
