@@ -24,8 +24,8 @@ MODEL_PATH = "models/transformer_signal_model.pt"
 SCALER_PATH = "models/transformer_scaler.joblib"
 
 # 🔗 Прямі raw-посилання на GitHub (змінено на raw.githubusercontent.com)
-GITHUB_MODEL_URL = "https://raw.githubusercontent.com/Vartttt/-/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_signal_model.pt"
-GITHUB_SCALER_URL = "https://raw.githubusercontent.com/Vartttt/-/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_scaler.joblib"
+GITHUB_MODEL_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_signal_model.pt"
+GITHUB_SCALER_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_scaler.joblib"
 
 # ⬇️ Завантаження обох файлів
 download_if_missing(GITHUB_MODEL_URL, MODEL_PATH)
