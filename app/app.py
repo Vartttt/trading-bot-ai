@@ -5,31 +5,39 @@ import os
 import requests
 
 def download_if_missing(url, save_path):
-    """Завантажує файл із GitHub, якщо його немає локально."""
+    """Завантажує файл із GitHub, якщо його немає локально.
+    Якщо файл неможливо отримати, не кидає Exception, просто пише попередження.
+    """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    if not os.path.exists(save_path):
-        print(f"⬇️ Завантажую {os.path.basename(save_path)} з {url}")
-        r = requests.get(url)
+    if os.path.exists(save_path):
+        print(f"✅ Файл {os.path.basename(save_path)} вже існує локально")
+        return
+
+    print(f"⬇️ Пробую скачати {os.path.basename(save_path)} з {url}")
+    try:
+        r = requests.get(url, timeout=60)
         if r.status_code != 200:
-            raise Exception(f"❌ Не вдалося завантажити файл ({r.status_code}): {url}")
+            print(f"⚠️ Не вдалося завантажити (HTTP {r.status_code}) {url}")
+            return
         with open(save_path, "wb") as f:
             f.write(r.content)
-        print(f"✅ Файл збережено у {save_path}")
-    else:
-        print(f"✅ Файл {os.path.basename(save_path)} вже існує")
+        print(f"✅ Збережено у {save_path}")
+    except Exception as e:
+        print(f"⚠️ Помилка завантаження {url}: {e}")
 
-# 📂 Шляхи збереження
-MODEL_PATH = "models/transformer_signal_model.pt"
+MODEL_PATH  = "models/transformer_signal_model.pt"
 SCALER_PATH = "models/transformer_scaler.joblib"
 
-# 🔗 Прямі raw-посилання на GitHub (змінено на raw.githubusercontent.com)
-GITHUB_MODEL_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_signal_model.pt"
-GITHUB_SCALER_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/95a6ab24de8c306bb7e22f0c233edaaa1dedba8b/models/transformer_scaler.joblib"
+# 👇 ОНОВИ ЦІ ДВА URL НА СПРАВЖНІ RAW-URL З КНОПКИ Raw
+GITHUB_MODEL_URL  = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/main/models/transformer_signal_model.pt"
+GITHUB_SCALER_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/main/models/transformer_scaler.joblib"
 
-# ⬇️ Завантаження обох файлів
 download_if_missing(GITHUB_MODEL_URL, MODEL_PATH)
 download_if_missing(GITHUB_SCALER_URL, SCALER_PATH)
+
+print("🚀 стартуємо застосунок далі...")
+# тут далі імпорти/запуск твоєї логіки бота/fastapi/flask і т.д.
 
 from flask import Flask, jsonify, Response, request  # + request
 import telebot                                       # + telebot
