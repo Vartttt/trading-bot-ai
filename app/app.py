@@ -1,6 +1,32 @@
 import os, sys, time, threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import os, requests
+
+MODEL_PATH = "models/transformer_signal_model.pt"
+SCALER_PATH = "models/transformer_scaler.joblib"
+
+def download_if_missing(url, dest):
+    if not os.path.exists(dest):
+        print(f"⚠️ Файл {dest} не знайдено. Завантажую...")
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        r = requests.get(url)
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            f.write(r.content)
+        print(f"✅ Завантажено {dest}")
+    else:
+        print(f"✅ Файл {dest} уже існує — завантаження не потрібно")
+
+download_if_missing(
+    "https://huggingface.co/Вартттт/transformer-signal-model/resolve/main/transformer_signal_model.pt",
+    MODEL_PATH
+)
+download_if_missing(
+    "https://huggingface.co/Вартттт/transformer-signal-model/resolve/main/transformer_scaler.joblib",
+    SCALER_PATH
+)
+
 from flask import Flask, jsonify, Response, request  # + request
 import telebot                                       # + telebot
 from notifier.bot_listener import run_bot, bot, BOT_TOKEN  # + bot, BOT_TOKEN
