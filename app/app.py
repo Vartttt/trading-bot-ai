@@ -1,31 +1,30 @@
 import os, sys, time, threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import os, requests
+import os
+import requests
+
+def download_if_missing(url, save_path):
+    """Завантажує файл із GitHub, якщо його немає локально."""
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    if not os.path.exists(save_path):
+        print(f"⬇️ Завантажую {save_path} з {url}")
+        r = requests.get(url)
+        if r.status_code != 200:
+            raise Exception(f"Не вдалося завантажити файл ({r.status_code}): {url}")
+        with open(save_path, "wb") as f:
+            f.write(r.content)
+        print(f"✅ Файл збережено у {save_path}")
+    else:
+        print(f"✅ Файл {save_path} вже існує")
 
 MODEL_PATH = "models/transformer_signal_model.pt"
-SCALER_PATH = "models/transformer_scaler.joblib"
+# ⚠️ Заміни <username> і <repo> на свої
+GITHUB_URL = "https://raw.githubusercontent.com/<username>/<repo>/main/models/transformer_signal_model.pt"
 
-def download_if_missing(url, dest):
-    if not os.path.exists(dest):
-        print(f"⚠️ Файл {dest} не знайдено. Завантажую...")
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        r = requests.get(url)
-        r.raise_for_status()
-        with open(dest, "wb") as f:
-            f.write(r.content)
-        print(f"✅ Завантажено {dest}")
-    else:
-        print(f"✅ Файл {dest} уже існує — завантаження не потрібно")
+download_if_missing(GITHUB_URL, MODEL_PATH)
 
-download_if_missing(
-    "https://huggingface.co/Вартттт/transformer-signal-model/resolve/main/transformer_signal_model.pt",
-    MODEL_PATH
-)
-download_if_missing(
-    "https://huggingface.co/Вартттт/transformer-signal-model/resolve/main/transformer_scaler.joblib",
-    SCALER_PATH
-)
 from flask import Flask, jsonify, Response, request  # + request
 import telebot                                       # + telebot
 from notifier.bot_listener import run_bot, bot, BOT_TOKEN  # + bot, BOT_TOKEN
