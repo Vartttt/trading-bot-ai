@@ -26,7 +26,6 @@ download_if_missing(
     "https://huggingface.co/Вартттт/transformer-signal-model/resolve/main/transformer_scaler.joblib",
     SCALER_PATH
 )
-
 from flask import Flask, jsonify, Response, request  # + request
 import telebot                                       # + telebot
 from notifier.bot_listener import run_bot, bot, BOT_TOKEN  # + bot, BOT_TOKEN
