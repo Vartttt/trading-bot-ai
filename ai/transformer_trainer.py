@@ -84,10 +84,12 @@ class SignalTransformer(nn.Module):
     def __init__(self, input_dim, embed_dim=64, n_heads=4, ff_dim=128, num_layers=2):
         super().__init__()
         self.embedding = nn.Linear(input_dim, embed_dim)
+        
         encoder_layer = nn.TransformerEncoderLayer(
-    d_model=embed_dim, nhead=n_heads, dim_feedforward=ff_dim, dropout=0.1
-        batch_first=True
+            d_model=embed_dim, nhead=n_heads, dim_feedforward=ff_dim, dropout=0.1
+            batch_first=True
         )
+        
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc = nn.Sequential(
             nn.Linear(embed_dim, 64),
