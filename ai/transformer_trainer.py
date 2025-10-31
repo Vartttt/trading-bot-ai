@@ -33,6 +33,8 @@ print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
 # ==============================
 
 import json
+import time
+import traceback
 import numpy as np
 import pandas as pd
 import torch
@@ -44,6 +46,14 @@ from joblib import dump, load
 MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
 SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
 TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
+
+# для автоперевчання
+COOLDOWN_SEC = int(os.getenv("RETRAIN_COOLDOWN_SEC", 6 * 60 * 60))
+FLAG_PATH = "/tmp/last_auto_retrain.txt"
+
+# канонічний список фіч (ті, що йшли у тренування без таргету)
+FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5"]
+TARGET_COL = "strength"
 
 
 # ============================================================
@@ -75,7 +85,7 @@ class SignalTransformer(nn.Module):
         super().__init__()
         self.embedding = nn.Linear(input_dim, embed_dim)
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim, nhead=n_heads, dim_feedforward=ff_dim, dropout=0.1
+            d_model=embed_dim, nhead=n_heads, dimfeedforward=ff_dim, dropout=0.1
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc = nn.Sequential(
@@ -86,11 +96,11 @@ class SignalTransformer(nn.Module):
         )
 
     def forward(self, x):
-        x = self.embedding(x)
-        x = x.permute(1, 0, 2)  # [seq, batch, features]
+        x = self.embedding(x)           # (batch, seq, embed_dim)
+        x = x.permute(1, 0, 2)          # (seq, batch, embed_dim)
         encoded = self.encoder(x)
-        out = encoded[-1]  # last time step
-        return self.fc(out)
+        out = encoded[-1]               # (batch, embed_dim) — останній крок
+        return self.fc(out)             # (batch, 1)
 
 
 # ============================================================
@@ -115,46 +125,38 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
     print(df.head(3))
 
     # 🔧 Нормалізація strength у діапазон [0, 1]
-    if df["strength"].max() > 1 or df["strength"].min() < 0:
+    if df[TARGET_COL].max() > 1 or df[TARGET_COL].min() < 0:
         print("⚙️ Strength виходить за межі [0,1], виконуємо нормалізацію...")
-        df["strength"] = (df["strength"] - df["strength"].min()) / (df["strength"].max() - df["strength"].min())
+        df[TARGET_COL] = (df[TARGET_COL] - df[TARGET_COL].min()) / (df[TARGET_COL].max() - df[TARGET_COL].min())
+    df[TARGET_COL] = df[TARGET_COL].clip(0, 1)
 
-    # І навіть якщо не виходить — підстрахуємось
-    df["strength"] = df["strength"].clip(0, 1)
-    
-    features = ["ema_diff5", "rsi5", "atr", "volz5", "strength"]
-    df = df[features].fillna(0)
+    # залишаємо лише потрібні колонки
+    df = df[FEATURE_COLS + [TARGET_COL]].fillna(0)
     print(f"📊 Рядків до тренування: {len(df)}")
 
-    # Нормалізація значень strength у діапазон [0, 1]
-    if df["strength"].max() > 1 or df["strength"].min() < 0:
-        print("⚙️ Нормалізую strength у діапазон [0, 1] ...")
-        df["strength"] = (df["strength"] - df["strength"].min()) / (df["strength"].max() - df["strength"].min())
-
+    # Масштабуємо ТІЛЬКИ фічі, не таргет
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df.values)
+    X_scaled = scaler.fit_transform(df[FEATURE_COLS].values)
     dump(scaler, SCALER_PATH)
 
-    # Перевірка коректності даних strength
-    if (df["strength"] < 0).any() or (df["strength"] > 1).any():
-        print("⚠️ Виправляю значення strength у межах [0,1]")
-        df["strength"] = np.clip(df["strength"], 0, 1)
+    y = df[TARGET_COL].values.reshape(-1, 1)
+    data_mat = np.hstack([X_scaled, y])           # остання колонка — таргет
 
-    dataset = SignalDataset(X_scaled, seq_len)
+    dataset = SignalDataset(data_mat, seq_len)
     print(f"📏 Довжина dataset після формування: {len(dataset)}")
 
     if len(dataset) == 0:
-        print("⚠️ Dataset порожній — збільши кількість рядків у train_data.json (мінімум 60-70).")
+        print("⚠️ Dataset порожній — збільшуй кількість рядків у train_data.json (мінімум 60-70).")
         return
 
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    model = SignalTransformer(input_dim=len(features) - 1)
+    model = SignalTransformer(input_dim=len(FEATURE_COLS))
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for epoch in range(epochs):
-        total_loss = 0
+        total_loss = 0.0
         for Xb, yb in loader:
             optimizer.zero_grad()
             preds = model(Xb).squeeze()
@@ -174,27 +176,22 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
 def predict_strength(features_dict):
     try:
         scaler = load(SCALER_PATH)
-        model = SignalTransformer(...)
+        model = SignalTransformer(input_dim=len(FEATURE_COLS))
         model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         model.eval()
 
-        x = np.array([[features_dict[c] for c in FEATURE_COLS]], dtype=float)
+        x = np.array([[features_dict[c] for c in FEATURE_COLS]], dtype=float)  # (1, n_features)
         x_scaled = scaler.transform(x)
-        x_t = torch.tensor(x_scaled, dtype=torch.float32)
+        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(1)         # (1, 1, n_features)
 
         with torch.no_grad():
             pred = model(x_t).item()
         return float(pred * 100)
 
-    except Exception as e:  # ВАЖЛИВО: той самий рівень відступу, що й try
+    except Exception as e:
         print("⚠️ predict_strength error:", e)
 
-        # ... твій блок автоперевчання з кулдауном ...
-        # (залиш як у тебе було)
-
-        return 50.0
-
-        # зчитати час останнього автоперевчання
+        # ⚙️ автоперевчання з кулдауном
         last = 0.0
         try:
             with open(FLAG_PATH, "r") as f:
@@ -209,21 +206,16 @@ def predict_strength(features_dict):
                 from ai.transformer_trainer import train_transformer
                 train_transformer(epochs=10, seq_len=10)
                 print("✅ Модель перевчена автоматично!")
-
-                # оновити мітку часу кулдауну
                 try:
                     with open(FLAG_PATH, "w") as f:
                         f.write(str(now))
                 except Exception:
                     pass
-
-                # 🔔 Повідомлення у Telegram
                 try:
                     from notifier.telegram_bot import send_message
                     send_message("🤖 Модель була перевчена автоматично після зміни фіч ✅")
                 except Exception as te:
                     print("⚠️ Не вдалося надіслати повідомлення в Telegram:", te)
-
             except Exception as retrain_error:
                 print("❌ Помилка при автонавчанні:", retrain_error)
                 traceback.print_exc()
@@ -231,9 +223,11 @@ def predict_strength(features_dict):
             wait = int(COOLDOWN_SEC - (now - last))
             print(f"⏳ Автоперевчання пропущено: кулдаун ще {wait}s.")
 
-    # безпечний фолбек
-    return 50.0
+        # безпечний фолбек
+        return 50.0
+
 
 if __name__ == "__main__":
     train_transformer(epochs=15, seq_len=10)
+
 
