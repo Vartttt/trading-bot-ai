@@ -340,3 +340,45 @@ def start_bg():
 if __name__ == "__main__":
     start_bg()
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")), debug=False)
+
+# ================================
+# 🧩 РЕЖИМ СИМУЛЯЦІЇ + СПОВІЩЕННЯ
+# ================================
+from core.trading_simulator import TradingSimulator
+from notifier.telegram_bot import send_message  # Використовуємо твій наявний телеграм бот
+import time
+
+# 🔁 Режим: True = симуляція, False = реальна торгівля
+IS_SIMULATION = True
+
+# 🧠 Ініціалізація симулятора, якщо симуляція активна
+sim = TradingSimulator(balance=1000) if IS_SIMULATION else None
+
+# 🔔 Повідомлення про запуск
+mode_name = "🔬 РЕЖИМ СИМУЛЯЦІЇ" if IS_SIMULATION else "💹 РЕАЛЬНА ТОРГІВЛЯ"
+send_message(f"🤖 Бот запущено у режимі: {mode_name}\nБаланс: {1000 if IS_SIMULATION else 'біржовий'} USD")
+
+# 🕒 Функція відстеження результатів
+def monitor_trading():
+    try:
+        while True:
+            if IS_SIMULATION and sim:
+                summary = sim.summary()
+                msg = (
+                    f"📊 Результати симуляції:\n"
+                    f"💰 Баланс: {summary['balance']:.2f} USDT\n"
+                    f"📈 Прибуток/збиток: {summary['profit']:+.2f} USDT\n"
+                    f"📊 Кількість угод: {summary['trades']}\n"
+                )
+                send_message(msg)
+            else:
+                # У реальному режимі просто повідомлення про стан
+                send_message("💹 Бот працює у реальному режимі — моніторинг активний.")
+            time.sleep(600)  # оновлення кожні 10 хвилин
+    except Exception as e:
+        send_message(f"⚠️ Помилка моніторингу: {e}")
+
+# 🔄 Запуск моніторингу у фоновому потоці
+import threading
+t = threading.Thread(target=monitor_trading, daemon=True)
+t.start()
