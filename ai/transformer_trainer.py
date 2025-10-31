@@ -187,28 +187,57 @@ def predict_strength(features_dict: dict) -> float:
         return float(pred * 100)
 
         except Exception as e:
-            print("⚠️ predict_strength error:", e)
-    
+    print("⚠️ predict_strength error:", e)
+
+    # 🧠 Якщо помилка пов'язана з фічами — спробувати автоперевчання (з кулдауном)
+    if any(k in str(e).lower() for k in [
+        "features", "n_features", "x has", "shape mismatch",
+        "number of features", "feature_names_in_", "expected", "got"
+    ]):
+        import os, time, traceback
+
+        COOLDOWN_SEC = int(os.getenv("RETRAIN_COOLDOWN_SEC", 6 * 60 * 60))  # 6 год за замовчуванням
+        FLAG_PATH = "/tmp/last_auto_retrain.txt"
+
+        # зчитати час останнього автоперевчання
+        last = 0.0
+        try:
+            with open(FLAG_PATH, "r") as f:
+                last = float(f.read().strip())
+        except Exception:
+            pass
+
+        now = time.time()
+        if now - last >= COOLDOWN_SEC:
+            print("♻️ Перевчаю модель через зміну кількості фіч...")
             try:
-                # 🧠 Якщо кількість фіч не співпадає — автонавчання
-                if "features" in str(e):
-                    print("♻️ Перевчаю модель через зміну вхідних даних...")
-                    try:
-                        from ai.transformer_trainer import train_transformer
-                        train_transformer(epochs=10, seq_len=10)
-                        print("✅ Модель перевчена автоматично!")
+                from ai.transformer_trainer import train_transformer
+                train_transformer(epochs=10, seq_len=10)
+                print("✅ Модель перевчена автоматично!")
 
-                        # 🔔 Повідомлення у Telegram (опціонально)
-                        try:
-                            from notifier.telegram_bot import send_message
-                            send_message("🤖 Модель перевчена автоматично — нові фічі оновлені ✅")
-                        except Exception as te:
-                            print("⚠️ Не вдалося надіслати сповіщення в Telegram:", te)
+                # оновити мітку часу кулдауну
+                try:
+                    with open(FLAG_PATH, "w") as f:
+                        f.write(str(now))
+                except Exception:
+                    pass
 
-                except Exception as retrain_error:
-                    print("❌ Помилка при автонавчанні:", retrain_error)
+                # 🔔 Повідомлення у Telegram
+                try:
+                    from notifier.telegram_bot import send_message
+                    send_message("🤖 Модель була перевчена автоматично після зміни фіч ✅")
+                except Exception as te:
+                    print("⚠️ Не вдалося надіслати повідомлення в Telegram:", te)
 
-                return 70.0
+            except Exception as retrain_error:
+                print("❌ Помилка при автонавчанні:", retrain_error)
+                traceback.print_exc()
+        else:
+            wait = int(COOLDOWN_SEC - (now - last))
+            print(f"⏳ Автоперевчання пропущено: кулдаун ще {wait}s.")
+
+    # безпечний фолбек
+    return 50.0
 
 if __name__ == "__main__":
     train_transformer(epochs=15, seq_len=10)
