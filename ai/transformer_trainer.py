@@ -185,10 +185,30 @@ def predict_strength(features_dict: dict) -> float:
         with torch.no_grad():
             pred = model(x_t).item()
         return float(pred * 100)
-    except Exception as e:
-        print("⚠️ predict_strength error:", e)
-        return 70.0
 
+        except Exception as e:
+            print("⚠️ predict_strength error:", e)
+    
+            try:
+                # 🧠 Якщо кількість фіч не співпадає — автонавчання
+                if "features" in str(e):
+                    print("♻️ Перевчаю модель через зміну вхідних даних...")
+                    try:
+                        from ai.transformer_trainer import train_transformer
+                        train_transformer(epochs=10, seq_len=10)
+                        print("✅ Модель перевчена автоматично!")
+
+                        # 🔔 Повідомлення у Telegram (опціонально)
+                        try:
+                            from notifier.telegram_bot import send_message
+                            send_message("🤖 Модель перевчена автоматично — нові фічі оновлені ✅")
+                        except Exception as te:
+                            print("⚠️ Не вдалося надіслати сповіщення в Telegram:", te)
+
+                except Exception as retrain_error:
+                    print("❌ Помилка при автонавчанні:", retrain_error)
+
+                return 70.0
 
 if __name__ == "__main__":
     train_transformer(epochs=15, seq_len=10)
