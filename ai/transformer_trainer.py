@@ -185,9 +185,9 @@ def predict_strength(features_dict: dict) -> float:
         with torch.no_grad():
             pred = model(x_t).item()
         return float(pred * 100)
-
-        except Exception as e:
-    print("⚠️ predict_strength error:", e)
+        
+except Exception as e:
+    print("⚠️ predict_strength error:", e) 
 
     # 🧠 Якщо помилка пов'язана з фічами — спробувати автоперевчання (з кулдауном)
     if any(k in str(e).lower() for k in [
