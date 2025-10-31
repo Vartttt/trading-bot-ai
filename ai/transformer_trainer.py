@@ -47,6 +47,66 @@ MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
 SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
 TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
 
+import requests
+import json
+import os
+import pandas as pd
+import ta
+import time
+
+# ⚙️ Завантаження історичних свічок з MEXC
+def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
+    """
+    Завантажує історичні свічки з біржі MEXC і формує DataFrame
+    symbol: торгова пара
+    interval: таймфрейм (1m, 5m, 15m, 1h)
+    limit: кількість свічок (за замовчуванням 20000)
+    """
+    print(f"📊 Завантажую {limit} свічок з MEXC для {symbol} ({interval})...")
+    url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    try:
+        r = requests.get(url, timeout=15)
+        data = r.json()
+
+        if not isinstance(data, list):
+            print("❌ Некоректна відповідь API MEXC:", data)
+            return []
+
+        df = pd.DataFrame(data, columns=[
+            "open_time", "open", "high", "low", "close", "volume",
+            "close_time", "quote_asset_volume", "trades", "taker_base",
+            "taker_quote", "ignore"
+        ])
+
+        df = df.astype({
+            "open": float, "high": float, "low": float, "close": float, "volume": float
+        })
+        df.dropna(inplace=True)
+
+        # Формуємо фічі для навчання
+        df["ema_diff5"] = df["close"].ewm(span=9).mean() - df["close"].ewm(span=21).mean()
+        df["rsi5"] = ta.momentum.RSIIndicator(df["close"], 14).rsi()
+        df["atr"] = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], 14).average_true_range()
+        df["volz5"] = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std() + 1e-9)
+        df.dropna(inplace=True)
+
+        # Останні 20000 рядків (зайві обрізаються)
+        df = df.tail(limit)
+
+        # Зберігаємо у JSON
+        df_out = df[["ema_diff5", "rsi5", "atr", "volz5"]].to_dict(orient="records")
+
+        os.makedirs(os.path.dirname(TRAIN_DATA_PATH), exist_ok=True)
+        with open(TRAIN_DATA_PATH, "w") as f:
+            json.dump(df_out, f, indent=2)
+
+        print(f"✅ Дані успішно збережено до {TRAIN_DATA_PATH} ({len(df_out)} рядків)")
+        return df_out
+
+    except Exception as e:
+        print(f"❌ Помилка при завантаженні історії: {e}")
+        return []
+
 # для автоперевчання
 COOLDOWN_SEC = int(os.getenv("RETRAIN_COOLDOWN_SEC", 6 * 60 * 60))
 FLAG_PATH = "/tmp/last_auto_retrain.txt"
@@ -234,6 +294,20 @@ def predict_strength(features_dict):
 
 
 if __name__ == "__main__":
-    train_transformer(epochs=15, seq_len=10)
+    # Якщо немає локального train_data.json — створити
+    if not os.path.exists(TRAIN_DATA_PATH):
+        load_training_data(symbol="BTCUSDT", interval="15m", limit=20000)
+
+    # 🔄 Якщо файл існує, оновити старі дані
+    else:
+        mtime = os.path.getmtime(TRAIN_DATA_PATH)
+        age_hours = (time.time() - mtime) / 3600
+        if age_hours > 24:
+            print("🔁 Оновлюю train_data.json (старі дані більше 24 годин)...")
+            load_training_data(symbol="BTCUSDT", interval="15m", limit=20000)
+
+    # 🧠 Тренування
+    train_transformer(epochs=20, seq_len=10)
+
 
 
