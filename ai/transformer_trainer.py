@@ -171,33 +171,28 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
 # ============================================================
 # 🔮 Predict
 # ============================================================
-def predict_strength(features_dict: dict) -> float:
+def predict_strength(features_dict):
     try:
         scaler = load(SCALER_PATH)
-        model = SignalTransformer(input_dim=4)
+        model = SignalTransformer(...)
         model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         model.eval()
 
-        x = np.array([[features_dict["ema_diff5"], features_dict["rsi5"], features_dict["atr"], features_dict["volz5"]]])
+        x = np.array([[features_dict[c] for c in FEATURE_COLS]], dtype=float)
         x_scaled = scaler.transform(x)
-        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(0)
+        x_t = torch.tensor(x_scaled, dtype=torch.float32)
 
         with torch.no_grad():
             pred = model(x_t).item()
         return float(pred * 100)
-        
-except Exception as e:
-    print("⚠️ predict_strength error:", e) 
 
-    # 🧠 Якщо помилка пов'язана з фічами — спробувати автоперевчання (з кулдауном)
-    if any(k in str(e).lower() for k in [
-        "features", "n_features", "x has", "shape mismatch",
-        "number of features", "feature_names_in_", "expected", "got"
-    ]):
-        import os, time, traceback
+    except Exception as e:  # ВАЖЛИВО: той самий рівень відступу, що й try
+        print("⚠️ predict_strength error:", e)
 
-        COOLDOWN_SEC = int(os.getenv("RETRAIN_COOLDOWN_SEC", 6 * 60 * 60))  # 6 год за замовчуванням
-        FLAG_PATH = "/tmp/last_auto_retrain.txt"
+        # ... твій блок автоперевчання з кулдауном ...
+        # (залиш як у тебе було)
+
+        return 50.0
 
         # зчитати час останнього автоперевчання
         last = 0.0
