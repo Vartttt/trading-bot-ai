@@ -148,7 +148,7 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
         if df.empty:
             raise ValueError("train_data.json порожній!")
 
-        feature_cols = ["ema_diff5", "rsi5", "atr", "volz5"]
+        FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
         df = df[feature_cols].fillna(0)
         df["strength"] = np.random.uniform(0, 1, len(df))
 
