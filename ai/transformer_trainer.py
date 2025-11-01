@@ -72,6 +72,7 @@ MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
 SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
 TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
 FLAG_PATH = "/tmp/last_auto_retrain.txt"
+FEATURE_COLS_PATH = os.path.join(MODEL_DIR, "feature_cols.json")
 
 # ============================================================
 # ⚙️ Завантаження історичних свічок
@@ -119,9 +120,9 @@ def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
         # Зберігаємо у JSON
         df_out = df[["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]].to_dict(orient="records")
 
-        os.makedirs("models", exist_ok=True)
-        with open("models/train_data.json", "w") as f:
-            json.dump(df_out, f, indent=2)
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        with open(TRAIN_DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(df_out, f, ensure_ascii=False, indent=2)
 
         print(f"✅ Дані збережено: models/train_data.json ({len(df_out)} рядків)")
         return df_out
@@ -192,10 +193,13 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
         df = df[feature_cols].fillna(0)            # лишаємо тільки фічі
         print(f"✅ Використані фічі: {feature_cols}")
 
+        with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
+            json.dump(feature_cols, f, ensure_ascii=False, indent=2)
+
         df["strength"] = np.random.uniform(0, 1, len(df))
 
         scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df[feature_cols].values)
+        X_scaled = scaler.fit_transform(df.values)
         dump(scaler, SCALER_PATH)
 
         y = df["strength"].values.reshape(-1, 1)
@@ -235,7 +239,15 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
 # ============================================================
 def predict_strength(features_dict):
     try:
-        feature_cols = ["ema_diff5", "rsi5", "atr", "volz5"]
+        # 1) підвантажуємо той самий список ознак, що зберегли під час тренування
+        with open(FEATURE_COLS_PATH, "r", encoding="utf-8") as f:
+            feature_cols = json.load(f)
+
+        # 2) валідована побудова вектора у правильному порядку
+        missing = [c for c in feature_cols if c not in features_dict]
+        if missing:
+            raise ValueError(f"Відсутні фічі для прогнозу: {missing}")
+
         scaler = load(SCALER_PATH)
         model = SignalTransformer(input_dim=len(feature_cols))
         model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
