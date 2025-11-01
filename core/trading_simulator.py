@@ -1,6 +1,7 @@
 import random
 from notifier.telegram_bot import send_message
 from core.trade_logger import log_trade
+from core.trading_events import notify_open_position, notify_close_position, is_safe_mode
 
 class TradingSimulator:
     def __init__(self, balance=1000.0):
