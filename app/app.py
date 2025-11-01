@@ -1,43 +1,13 @@
 import os, sys, time, threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import os
-import requests
+from ai.transformer_trainer import ensure_artifacts
 
-def download_if_missing(url, save_path):
-    """Завантажує файл із GitHub, якщо його немає локально.
-    Якщо файл неможливо отримати, не кидає Exception, просто пише попередження.
-    """
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+# 🔒 Працюємо тільки з локальними файлами в MODEL_DIR.
+# Якщо їх немає — ensure_artifacts сам згенерує (train_data, feature_cols, scaler, модель).
+ensure_artifacts()
 
-    if os.path.exists(save_path):
-        print(f"✅ Файл {os.path.basename(save_path)} вже існує локально")
-        return
-
-    print(f"⬇️ Пробую скачати {os.path.basename(save_path)} з {url}")
-    try:
-        r = requests.get(url, timeout=60)
-        if r.status_code != 200:
-            print(f"⚠️ Не вдалося завантажити (HTTP {r.status_code}) {url}")
-            return
-        with open(save_path, "wb") as f:
-            f.write(r.content)
-        print(f"✅ Збережено у {save_path}")
-    except Exception as e:
-        print(f"⚠️ Помилка завантаження {url}: {e}")
-
-MODEL_PATH  = "models/transformer_signal_model.pt"
-SCALER_PATH = "models/transformer_scaler.joblib"
-
-# 👇 ОНОВИ ЦІ ДВА URL НА СПРАВЖНІ RAW-URL З КНОПКИ Raw
-GITHUB_MODEL_URL  = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/main/models/transformer_signal_model.pt"
-GITHUB_SCALER_URL = "https://raw.githubusercontent.com/Vartttt/trading-bot-ai/main/models/transformer_scaler.joblib"
-
-download_if_missing(GITHUB_MODEL_URL, MODEL_PATH)
-download_if_missing(GITHUB_SCALER_URL, SCALER_PATH)
-
-print("🚀 стартуємо застосунок далі...")
-# тут далі імпорти/запуск твоєї логіки бота/fastapi/flask і т.д.
+print("🚀 Стартуємо застосунок далі (локальні артефакти готові)...")
 
 from flask import Flask, jsonify, Response, request  # + request
 import telebot                                       # + telebot
