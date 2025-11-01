@@ -50,44 +50,57 @@ FLAG_PATH = "/tmp/last_auto_retrain.txt"
 # ⚙️ Завантаження історичних свічок
 # ============================================================
 def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
-    """Завантажує історію з MEXC, обчислює фічі та зберігає JSON."""
     print(f"📊 Завантажую {limit} свічок з MEXC для {symbol} ({interval})...")
     url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
 
     try:
-        r = requests.get(url, timeout=20)
-        r.raise_for_status()
+        r = requests.get(url, timeout=15)
         data = r.json()
-        if not isinstance(data, list) or len(data) < 100:
-            raise ValueError("Недостатньо даних з API MEXC")
+
+        if not isinstance(data, list):
+            print("❌ Некоректна відповідь API MEXC:", data)
+            return []
 
         df = pd.DataFrame(data, columns=[
             "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "trades",
-            "taker_base", "taker_quote", "ignore"
+            "close_time", "quote_asset_volume", "trades", "taker_base",
+            "taker_quote", "ignore"
         ])
-        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
+
+        df = df.astype({
+            "open": float, "high": float, "low": float, "close": float, "volume": float
+        })
         df.dropna(inplace=True)
 
-        # 🧩 Технічні фічі
-        df["ema_diff5"] = df["close"].ewm(span=9).mean() - df["close"].ewm(span=21).mean()
+        # --- Індикатори ---
+        df["ema9"] = ta.trend.EMAIndicator(df["close"], 9).ema_indicator()
+        df["ema21"] = ta.trend.EMAIndicator(df["close"], 21).ema_indicator()
+        df["ema_diff5"] = df["ema9"] - df["ema21"]
+
         df["rsi5"] = ta.momentum.RSIIndicator(df["close"], 14).rsi()
         df["atr"] = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], 14).average_true_range()
         df["volz5"] = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std() + 1e-9)
+
+        # 🧠 НОВА ФІЧА — прискорення тренду
+        df["trend_accel"] = df["ema_diff5"].diff()
+
         df.dropna(inplace=True)
 
+        # Останні 20 000 рядків
         df = df.tail(limit)
-        df_out = df[["ema_diff5", "rsi5", "atr", "volz5"]].replace([np.inf, -np.inf], 0).fillna(0)
-        os.makedirs(os.path.dirname(TRAIN_DATA_PATH), exist_ok=True)
-        df_out.to_json(TRAIN_DATA_PATH, orient="records", indent=2)
 
-        print(f"✅ Дані збережено: {TRAIN_DATA_PATH} ({len(df_out)} рядків)")
-        send_message(f"📥 Завантажено {len(df_out)} свічок з MEXC для {symbol} ({interval}) ✅")
+        # Зберігаємо у JSON
+        df_out = df[["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]].to_dict(orient="records")
+
+        os.makedirs("models", exist_ok=True)
+        with open("models/train_data.json", "w") as f:
+            json.dump(df_out, f, indent=2)
+
+        print(f"✅ Дані збережено: models/train_data.json ({len(df_out)} рядків)")
         return df_out
 
     except Exception as e:
-        print(f"❌ Помилка при завантаженні: {e}")
-        send_message(f"⚠️ Не вдалося завантажити історію з MEXC: {e}")
+        print(f"❌ Помилка при завантаженні історії: {e}")
         return []
 
 # ============================================================
