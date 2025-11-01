@@ -249,28 +249,20 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
 # ============================================================
 # 🔮 Predict
 # ============================================================
-def predict_strength(features_dict):
-    try:
-        # 1) підвантажуємо той самий список ознак, що зберегли під час тренування
-        with open(FEATURE_COLS_PATH, "r", encoding="utf-8") as f:
-            feature_cols = json.load(f)
-
-        # 2) валідована побудова вектора у правильному порядку
-        missing = [c for c in feature_cols if c not in features_dict]
-        if missing:
-            raise ValueError(f"Відсутні фічі для прогнозу: {missing}")
-
-        scaler = load(SCALER_PATH)
-        model = SignalTransformer(input_dim=len(feature_cols))
-        model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
-        model.eval()
-
-        x = np.array([[features_dict[c] for c in feature_cols]], dtype=float)
-        x_scaled = scaler.transform(x)
-        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(0)
-
-        with torch.no_grad():
-            pred = model(x_t).item()
+def predict_strength(...):
+    # Формуємо шлях до файлу з ознаками
+    feature_cols_path = os.path.join(MODEL_DIR, 'feature_cols.json')
+    # Перевіряємо, чи існує файл feature_cols.json
+    if not os.path.exists(feature_cols_path):
+        os.makedirs(MODEL_DIR, exist_ok=True)            # Створюємо директорію, якщо її немає:contentReference[oaicite:0]{index=0}
+        feature_cols = DEFAULT_FEATURE_COLS              # Використовуємо список ознак за замовчуванням
+        # Зберігаємо список DEFAULT_FEATURE_COLS у новий JSON-файл
+        with open(feature_cols_path, 'w') as f:
+            json.dump(feature_cols, f)                  # Записуємо список ознак у feature_cols.json:contentReference[oaicite:1]{index=1}
+    else:
+        # Якщо файл існує – завантажуємо його вміст як раніше
+        with open(feature_cols_path, 'r') as f:
+            feature_cols = json.load(f)                 # Зчитуємо список ознак із JSON-файлу:contentReference[oaicite:2]{index=2}
 
         send_message(f"📊 Сила сигналу ШІ: {pred * 100:.2f}%")
         return float(pred * 100)
