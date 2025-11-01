@@ -8,6 +8,7 @@ MODEL_DIR = os.getenv("MODEL_DIR", "./models")
 MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
 SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
 TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
+FEATURE_COLS_PATH = os.path.join(MODEL_DIR, "feature_cols.json")  # ⬅️ додано
 
 # === Основні параметри торгового бота ===
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))  # інтервал у секундах
@@ -17,16 +18,18 @@ MIN_STRENGTH = int(os.getenv("MIN_STRENGTH", "72"))
 
 # === Біржові налаштування ===
 EXCHANGE = os.getenv("EXCHANGE", "MEXC")
-SYMBOLS = os.getenv("SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT,BNB/USDT,XRP/USDT").split(",")
+SYMBOLS = [s.strip() for s in os.getenv(  # ⬅️ прибрано пробіли, якщо є
+    "SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT,BNB/USDT,XRP/USDT"
+).split(",") if s.strip()]
 DYNSYM_TOPN = int(os.getenv("DYNSYM_TOPN", "12"))
 
 # === Telegram ===
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN", "")  # ⬅️ сумісність
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # === API для біржі ===
-API_KEY = os.getenv("API_KEY", "")
-API_SECRET = os.getenv("API_SECRET", "")
+API_KEY = os.getenv("API_KEY") or os.getenv("MEXC_API_KEY", "")            # ⬅️ сумісність
+API_SECRET = os.getenv("API_SECRET") or os.getenv("MEXC_SECRET_KEY", "")   # ⬅️ сумісність
 
 # === Оптимізація ===
 OPT_REFRESH_SEC = int(os.getenv("OPT_REFRESH_SEC", "7200"))  # 2 години
@@ -46,8 +49,6 @@ ENABLE_FUNDING_FILTER = os.getenv("ENABLE_FUNDING_FILTER", "true").lower() == "t
 ENABLE_SESSION_GUARD = os.getenv("ENABLE_SESSION_GUARD", "true").lower() == "true"
 
 # === Створення директорії моделі (на випадок відсутності) ===
-try:
-    os.makedirs(MODEL_DIR, exist_ok=True)
-except FileExistsError:
-    pass
+os.makedirs(MODEL_DIR, exist_ok=True)  # ⬅️ спрощено
+
 
