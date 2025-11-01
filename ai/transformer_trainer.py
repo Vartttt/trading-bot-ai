@@ -249,20 +249,20 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
 # ============================================================
 # 🔮 Predict
 # ============================================================
-def predict_strength(...):
-    # Формуємо шлях до файлу з ознаками
-    feature_cols_path = os.path.join(MODEL_DIR, 'feature_cols.json')
-    # Перевіряємо, чи існує файл feature_cols.json
-    if not os.path.exists(feature_cols_path):
-        os.makedirs(MODEL_DIR, exist_ok=True)            # Створюємо директорію, якщо її немає:contentReference[oaicite:0]{index=0}
-        feature_cols = DEFAULT_FEATURE_COLS              # Використовуємо список ознак за замовчуванням
-        # Зберігаємо список DEFAULT_FEATURE_COLS у новий JSON-файл
-        with open(feature_cols_path, 'w') as f:
-            json.dump(feature_cols, f)                  # Записуємо список ознак у feature_cols.json:contentReference[oaicite:1]{index=1}
-    else:
-        # Якщо файл існує – завантажуємо його вміст як раніше
-        with open(feature_cols_path, 'r') as f:
-            feature_cols = json.load(f)                 # Зчитуємо список ознак із JSON-файлу:contentReference[oaicite:2]{index=2}
+def predict_strength(input_data):
+    import os, json
+    MODEL_DIR = "./models"
+    file_path = os.path.join(MODEL_DIR, "feature_cols.json")
+    # Перевірити, чи існує JSON-файл; якщо ні – створити директорію та файл
+    if not os.path.exists(file_path):
+        os.makedirs(MODEL_DIR, exist_ok=True)  # створює папку "./models", якщо її немає
+        default_cols = []  # наприклад, порожній список або інші дані за замовчуванням
+        with open(file_path, 'w') as f:
+            json.dump(default_cols, f)
+    # Тепер файл існує – можна читати його або використовувати для прогнозу
+    with open(file_path, 'r') as f:
+        feature_cols = json.load(f)
+    # ... (використати feature_cols у логіці прогнозування) ...
 
         send_message(f"📊 Сила сигналу ШІ: {pred * 100:.2f}%")
         return float(pred * 100)
