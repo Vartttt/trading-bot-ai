@@ -38,6 +38,33 @@ from sklearn.preprocessing import StandardScaler
 from joblib import dump, load
 from notifier.telegram_notifier import send_message
 
+# ---- Features config (safe defaults + back-compat) ----
+DEFAULT_FEATURE_COLS = [
+    "ema_diff", "rsi", "atr", "vol_z", "trend_accel",   # нові
+    "ema_diff5", "rsi5", "volz5"                        # back-compat з попереднім датасетом
+]
+TARGET_COLS = ["next_return", "target"]
+
+def _resolve_feature_cols(df: pd.DataFrame):
+    """
+    Повертає список колонок-ознак, які реально присутні у df.
+    1) намагаємось взяти перетин із DEFAULT_FEATURE_COLS;
+    2) якщо нічого не знайшли — беремо всі числові колонки,
+       крім цільових і сирих OHLCV/часу.
+    """
+    # 1) перетин із дефолтним списком
+    cols = [c for c in DEFAULT_FEATURE_COLS if c in df.columns]
+
+    # 2) фолбек — всі числові, крім заборонених
+    if not cols:
+        blacklist = set(TARGET_COLS + ["open_time", "open", "high", "low", "close", "volume"])
+        cols = [c for c in df.columns
+                if c not in blacklist and pd.api.types.is_numeric_dtype(df[c])]
+
+    if not cols:
+        raise ValueError("Не вдалося визначити feature_cols — у DataFrame немає придатних ознак.")
+    return cols
+
 # ============================================================
 # ⚙️ Шляхи
 # ============================================================
@@ -162,11 +189,13 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
             raise ValueError("train_data.json порожній!")
 
         FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
+        feature_cols = _resolve_feature_cols(df)
         df = df[feature_cols].fillna(0)
+        print(f"✅ Використані фічі: {feature_cols}")
         df["strength"] = np.random.uniform(0, 1, len(df))
 
         scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df[feature_cols])
+        X_scaled = scaler.fit_transform(df[feature_cols].values)
         dump(scaler, SCALER_PATH)
 
         y = df["strength"].values.reshape(-1, 1)
