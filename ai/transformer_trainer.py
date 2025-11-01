@@ -31,93 +31,74 @@ print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
 # ==============================
 # 🔚 END OF UNIVERSAL IMPORT FIX
 # ==============================
-
 import json
 import time
 import traceback
+import requests
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import ta
 from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import StandardScaler
 from joblib import dump, load
 
+# ============================================================
+# ⚙️ Шляхи
+# ============================================================
 MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
 SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
 TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
 
-import requests
-import json
-import os
-import pandas as pd
-import ta
-import time
-
-# ⚙️ Завантаження історичних свічок з MEXC
+# ============================================================
+# ⚙️ Завантаження історичних свічок
+# ============================================================
 def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
     """
-    Завантажує історичні свічки з біржі MEXC і формує DataFrame
-    symbol: торгова пара
-    interval: таймфрейм (1m, 5m, 15m, 1h)
-    limit: кількість свічок (за замовчуванням 20000)
+    Завантажує історичні свічки з MEXC і формує DataFrame
     """
     print(f"📊 Завантажую {limit} свічок з MEXC для {symbol} ({interval})...")
     url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+
     try:
         r = requests.get(url, timeout=15)
         data = r.json()
-
-        if not isinstance(data, list):
-            print("❌ Некоректна відповідь API MEXC:", data)
-            return []
+        if not isinstance(data, list) or len(data) == 0:
+            raise ValueError("Некоректна відповідь API MEXC")
 
         df = pd.DataFrame(data, columns=[
             "open_time", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "trades", "taker_base",
             "taker_quote", "ignore"
         ])
-
-        df = df.astype({
-            "open": float, "high": float, "low": float, "close": float, "volume": float
-        })
+        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df.dropna(inplace=True)
 
-        # Формуємо фічі для навчання
+        # Технічні індикатори
         df["ema_diff5"] = df["close"].ewm(span=9).mean() - df["close"].ewm(span=21).mean()
         df["rsi5"] = ta.momentum.RSIIndicator(df["close"], 14).rsi()
         df["atr"] = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], 14).average_true_range()
         df["volz5"] = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std() + 1e-9)
         df.dropna(inplace=True)
 
-        # Останні 20000 рядків (зайві обрізаються)
         df = df.tail(limit)
-
-        # Зберігаємо у JSON
         df_out = df[["ema_diff5", "rsi5", "atr", "volz5"]].to_dict(orient="records")
 
         os.makedirs(os.path.dirname(TRAIN_DATA_PATH), exist_ok=True)
         with open(TRAIN_DATA_PATH, "w") as f:
             json.dump(df_out, f, indent=2)
 
-        print(f"✅ Дані успішно збережено до {TRAIN_DATA_PATH} ({len(df_out)} рядків)")
+        print(f"✅ Дані збережено: {TRAIN_DATA_PATH} ({len(df_out)} рядків)")
         return df_out
 
     except Exception as e:
         print(f"❌ Помилка при завантаженні історії: {e}")
         return []
 
-# для автоперевчання
-COOLDOWN_SEC = int(os.getenv("RETRAIN_COOLDOWN_SEC", 6 * 60 * 60))
-FLAG_PATH = "/tmp/last_auto_retrain.txt"
-
-# канонічний список фіч (ті, що йшли у тренування без таргету)
-FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5"]
-TARGET_COL = "strength"
-
 
 # ============================================================
-# 📘 Dataset Definition
+# 🧠 Dataset
 # ============================================================
 class SignalDataset(Dataset):
     def __init__(self, data, seq_len=50):
@@ -138,21 +119,15 @@ class SignalDataset(Dataset):
 
 
 # ============================================================
-# 🧠 Transformer Model
+# 🧩 Transformer Model
 # ============================================================
 class SignalTransformer(nn.Module):
     def __init__(self, input_dim, embed_dim=64, n_heads=4, ff_dim=128, num_layers=2):
         super().__init__()
         self.embedding = nn.Linear(input_dim, embed_dim)
-        
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim,
-            nhead=n_heads,
-            dim_feedforward=ff_dim,
-            dropout=0.1,
-            batch_first=True
+            d_model=embed_dim, nhead=n_heads, dim_feedforward=ff_dim, dropout=0.1, batch_first=True
         )
-
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.fc = nn.Sequential(
             nn.Linear(embed_dim, 64),
@@ -162,67 +137,52 @@ class SignalTransformer(nn.Module):
         )
 
     def forward(self, x):
-        x = self.embedding(x)           # (batch, seq, embed_dim)
-        x = x.permute(1, 0, 2)          # (seq, batch, embed_dim)
+        x = self.embedding(x)
         encoded = self.encoder(x)
-        out = encoded[-1]               # (batch, embed_dim) — останній крок
-        return self.fc(out)             # (batch, 1)
+        out = encoded[:, -1, :]
+        return self.fc(out)
 
 
 # ============================================================
-# ⚙️ Train / Save
+# 🏋️‍♂️ Train / Save
 # ============================================================
-def train_transformer(epochs=10, batch_size=32, seq_len=50):
-
+def train_transformer(epochs=15, batch_size=32, seq_len=50):
     if not os.path.exists(TRAIN_DATA_PATH):
-        print("⚠️ Немає train_data.json — спочатку згенеруй історію сигналів.")
+        print("⚠️ Немає train_data.json — спочатку згенеруй історію.")
         return
 
     with open(TRAIN_DATA_PATH, "r") as f:
         data = json.load(f)
 
-    if not isinstance(data, list) or len(data) == 0:
-        print("❌ train_data.json порожній або некоректний формат!")
+    df = pd.DataFrame(data)
+    if df.empty:
+        print("❌ train_data.json порожній!")
         return
 
-    df = pd.DataFrame(data)
-    print(f"🧾 Структура DataFrame: {df.shape}")
-    print("🔑 Колонки:", df.columns.tolist())
-    print(df.head(3))
+    feature_cols = ["ema_diff5", "rsi5", "atr", "volz5"]
+    df = df[feature_cols].fillna(0)
+    df["strength"] = np.random.uniform(0, 1, len(df))  # тимчасова мітка
 
-    # 🔧 Нормалізація strength у діапазон [0, 1]
-    if df[TARGET_COL].max() > 1 or df[TARGET_COL].min() < 0:
-        print("⚙️ Strength виходить за межі [0,1], виконуємо нормалізацію...")
-        df[TARGET_COL] = (df[TARGET_COL] - df[TARGET_COL].min()) / (df[TARGET_COL].max() - df[TARGET_COL].min())
-    df[TARGET_COL] = df[TARGET_COL].clip(0, 1)
-
-    # залишаємо лише потрібні колонки
-    df = df[FEATURE_COLS + [TARGET_COL]].fillna(0)
     print(f"📊 Рядків до тренування: {len(df)}")
-
-    # Масштабуємо ТІЛЬКИ фічі, не таргет
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df[FEATURE_COLS].values)
+    X_scaled = scaler.fit_transform(df[feature_cols])
     dump(scaler, SCALER_PATH)
 
-    y = df[TARGET_COL].values.reshape(-1, 1)
-    data_mat = np.hstack([X_scaled, y])           # остання колонка — таргет
-
+    y = df["strength"].values.reshape(-1, 1)
+    data_mat = np.hstack([X_scaled, y])
     dataset = SignalDataset(data_mat, seq_len)
-    print(f"📏 Довжина dataset після формування: {len(dataset)}")
 
-    if len(dataset) == 0:
-        print("⚠️ Dataset порожній — збільшуй кількість рядків у train_data.json (мінімум 60-70).")
+    if len(dataset) < 50:
+        print("⚠️ Dataset занадто малий — потрібно мінімум 100 рядків.")
         return
 
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    model = SignalTransformer(input_dim=len(FEATURE_COLS))
+    model = SignalTransformer(input_dim=len(feature_cols))
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     for epoch in range(epochs):
-        total_loss = 0.0
+        total_loss = 0
         for Xb, yb in loader:
             optimizer.zero_grad()
             preds = model(Xb).squeeze()
@@ -233,7 +193,7 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
         print(f"🧠 Epoch {epoch+1}/{epochs} | Loss: {total_loss/len(loader):.6f}")
 
     torch.save(model.state_dict(), MODEL_PATH)
-    print(f"✅ Модель збережено → {MODEL_PATH}")
+    print(f"✅ Модель збережено: {MODEL_PATH}")
 
 
 # ============================================================
@@ -241,73 +201,40 @@ def train_transformer(epochs=10, batch_size=32, seq_len=50):
 # ============================================================
 def predict_strength(features_dict):
     try:
+        feature_cols = ["ema_diff5", "rsi5", "atr", "volz5"]
         scaler = load(SCALER_PATH)
-        model = SignalTransformer(input_dim=len(FEATURE_COLS))
+        model = SignalTransformer(input_dim=len(feature_cols))
         model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
         model.eval()
 
-        x = np.array([[features_dict[c] for c in FEATURE_COLS]], dtype=float)  # (1, n_features)
+        x = np.array([[features_dict[c] for c in feature_cols]], dtype=float)
         x_scaled = scaler.transform(x)
-        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(1)         # (1, 1, n_features)
+        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(0)
 
         with torch.no_grad():
             pred = model(x_t).item()
         return float(pred * 100)
 
     except Exception as e:
-        print("⚠️ predict_strength error:", e)
-
-        # ⚙️ автоперевчання з кулдауном
-        last = 0.0
-        try:
-            with open(FLAG_PATH, "r") as f:
-                last = float(f.read().strip())
-        except Exception:
-            pass
-
-        now = time.time()
-        if now - last >= COOLDOWN_SEC:
-            print("♻️ Перевчаю модель через зміну кількості фіч...")
-            try:
-                from ai.transformer_trainer import train_transformer
-                train_transformer(epochs=10, seq_len=10)
-                print("✅ Модель перевчена автоматично!")
-                try:
-                    with open(FLAG_PATH, "w") as f:
-                        f.write(str(now))
-                except Exception:
-                    pass
-                try:
-                    from notifier.telegram_bot import send_message
-                    send_message("🤖 Модель була перевчена автоматично після зміни фіч ✅")
-                except Exception as te:
-                    print("⚠️ Не вдалося надіслати повідомлення в Telegram:", te)
-            except Exception as retrain_error:
-                print("❌ Помилка при автонавчанні:", retrain_error)
-                traceback.print_exc()
-        else:
-            wait = int(COOLDOWN_SEC - (now - last))
-            print(f"⏳ Автоперевчання пропущено: кулдаун ще {wait}s.")
-
-        # безпечний фолбек
+        print(f"⚠️ predict_strength error: {e}")
         return 50.0
 
 
+# ============================================================
+# 🚀 Main (ініціалізація)
+# ============================================================
 if __name__ == "__main__":
-    # Якщо немає локального train_data.json — створити
     if not os.path.exists(TRAIN_DATA_PATH):
-        load_training_data(symbol="BTCUSDT", interval="15m", limit=20000)
-
-    # 🔄 Якщо файл існує, оновити старі дані
+        load_training_data(limit=20000)
     else:
         mtime = os.path.getmtime(TRAIN_DATA_PATH)
         age_hours = (time.time() - mtime) / 3600
         if age_hours > 24:
-            print("🔁 Оновлюю train_data.json (старі дані більше 24 годин)...")
-            load_training_data(symbol="BTCUSDT", interval="15m", limit=20000)
+            print("🔁 Оновлюю train_data.json...")
+            load_training_data(limit=20000)
 
-    # 🧠 Тренування
     train_transformer(epochs=20, seq_len=10)
+
 
 
 
