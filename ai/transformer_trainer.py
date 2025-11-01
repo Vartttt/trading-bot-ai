@@ -21,6 +21,10 @@ except ModuleNotFoundError:
 os.makedirs(MODEL_DIR, exist_ok=True)
 print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
 
+# --- дефолтні фічі + шлях до файла зі списком фіч ---
+DEFAULT_FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
+FEATURE_COLS_PATH = os.path.join(MODEL_DIR, "feature_cols.json")
+
 # ==============================
 # 🔚 END OF UNIVERSAL IMPORT FIX
 # ==============================
@@ -39,10 +43,7 @@ from joblib import dump, load
 from notifier.telegram_notifier import send_message
 
 # ---- Features config (safe defaults + back-compat) ----
-DEFAULT_FEATURE_COLS = [
-    "ema_diff", "rsi", "atr", "vol_z", "trend_accel",   # нові
-    "ema_diff5", "rsi5", "volz5"                        # back-compat з попереднім датасетом
-]
+DEFAULT_FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
 TARGET_COLS = ["next_return", "target"]
 
 def _resolve_feature_cols(df: pd.DataFrame):
@@ -130,6 +131,17 @@ def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
     except Exception as e:
         print(f"❌ Помилка при завантаженні історії: {e}")
         return []
+
+def ensure_artifacts():
+    os.makedirs(MODEL_DIR, exist_ok=True)
+
+    # якщо feature_cols.json відсутній — створюємо з дефолтним списком
+    if not os.path.exists(FEATURE_COLS_PATH):
+        with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
+            json.dump(DEFAULT_FEATURE_COLS, f, ensure_ascii=False, indent=2)
+        print(f"🆕 Створено {FEATURE_COLS_PATH} (дефолтні фічі).")
+    else:
+        print(f"✅ {os.path.basename(FEATURE_COLS_PATH)} існує.")
 
 # ============================================================
 # 🧠 Dataset
