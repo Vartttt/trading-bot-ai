@@ -188,10 +188,10 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
         if df.empty:
             raise ValueError("train_data.json порожній!")
 
-        feature_cols = _resolve_feature_cols(df)
-        df = df[feature_cols].fillna(0)
+        feature_cols = _resolve_feature_cols(df)   # NEW — визначаємо ознаки
+        df = df[feature_cols].fillna(0)            # лишаємо тільки фічі
         print(f"✅ Використані фічі: {feature_cols}")
-       
+
         df["strength"] = np.random.uniform(0, 1, len(df))
 
         scaler = StandardScaler()
