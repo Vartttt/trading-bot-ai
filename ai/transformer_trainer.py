@@ -75,53 +75,72 @@ FEATURE_COLS_PATH = os.path.join(MODEL_DIR, "feature_cols.json")
 # ⚙️ Завантаження історичних свічок
 # ============================================================
 def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
-    print(f"📊 Завантажую {limit} свічок з MEXC для {symbol} ({interval})...")
-    url = f"https://api.mexc.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    """
+    Тягнемо історію пачками по 1000 через endTime, поки не наберемо limit.
+    """
+    print(f"📊 Завантажую до {limit} свічок з MEXC для {symbol} ({interval})...")
+    url = "https://api.mexc.com/api/v3/klines"
+    max_chunk = 1000
+
+    all_rows = []
+    end_time = None  # ms
 
     try:
-        r = requests.get(url, timeout=15)
-        data = r.json()
+        while len(all_rows) < limit:
+            chunk_limit = min(max_chunk, limit - len(all_rows))
+            params = {"symbol": symbol, "interval": interval, "limit": chunk_limit}
+            if end_time is not None:
+                params["endTime"] = end_time  # очікується epoch ms
 
-        if not isinstance(data, list):
-            print("❌ Некоректна відповідь API MEXC:", data)
-            return []
+            r = requests.get(url, params=params, timeout=15)
+            data = r.json()
 
+            if not isinstance(data, list) or len(data) == 0:
+                print("⚠️ Порожня відповідь або не список — зупиняюся.")
+                break
+
+            # додаємо отримані свічки (вони приходять у зростаючому порядку)
+            all_rows.extend(data)
+
+            # пересуваємо вікно назад у часі — на мс перед першою свічкою в пачці
+            first_open_ms = data[0][0]
+            end_time = int(first_open_ms) - 1
+
+            # якщо прийшло менше, ніж просили, далі немає історії
+            if len(data) < chunk_limit:
+                break
+
+            time.sleep(0.2)  # делікатно до rate limit
+
+        # залишаємо рівно останні `limit` свічок
+        data = all_rows[-limit:]
+
+        # Формуємо DataFrame
         df = pd.DataFrame(data, columns=[
             "open_time", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "trades", "taker_base",
             "taker_quote", "ignore"
         ])
-
-        df = df.astype({
-            "open": float, "high": float, "low": float, "close": float, "volume": float
-        })
+        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df.dropna(inplace=True)
 
         # --- Індикатори ---
         df["ema9"] = ta.trend.EMAIndicator(df["close"], 9).ema_indicator()
         df["ema21"] = ta.trend.EMAIndicator(df["close"], 21).ema_indicator()
         df["ema_diff5"] = df["ema9"] - df["ema21"]
-
         df["rsi5"] = ta.momentum.RSIIndicator(df["close"], 14).rsi()
         df["atr"] = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], 14).average_true_range()
         df["volz5"] = (df["volume"] - df["volume"].rolling(20).mean()) / (df["volume"].rolling(20).std() + 1e-9)
-
-        # 🧠 НОВА ФІЧА — прискорення тренду
         df["trend_accel"] = df["ema_diff5"].diff()
-
         df.dropna(inplace=True)
 
-        # Останні 20 000 рядків
-        df = df.tail(limit)
-
-        # Зберігаємо у JSON
+        # Зберігаємо в JSON (тільки фічі)
         df_out = df[["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]].to_dict(orient="records")
-
         os.makedirs(MODEL_DIR, exist_ok=True)
         with open(TRAIN_DATA_PATH, "w", encoding="utf-8") as f:
             json.dump(df_out, f, ensure_ascii=False, indent=2)
 
-        print(f"✅ Дані збережено: models/train_data.json ({len(df_out)} рядків)")
+        print(f"✅ Дані збережено: {TRAIN_DATA_PATH} ({len(df_out)} рядків)")
         return df_out
 
     except Exception as e:
