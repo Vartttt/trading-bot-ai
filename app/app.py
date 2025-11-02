@@ -31,9 +31,9 @@ from core.trade_switch import is_trading_enabled
 from core.alpha_guards import session_guard, news_guard, funding_guard
 from risk.risk_daily_guard import daily_risk_ok, report_trade_pnl
 from core.health_monitor import exchange_ok
-from notifier.bot_listener import run_bot, bot, BOT_TOKEN
 BASE_URL = os.getenv("URL_ADDRESS", "")  # з середовища Railway                                    
 run_bot()
+os.environ.setdefault("RAILWAY_URL", BASE_URL)
 
 # ------------------ ADAPTIVE PROTECTION LAYER ------------------
 
@@ -280,10 +280,10 @@ def background_loop():
             try:
                 # 📊 Реєстрація результатів після кожної угоди
                 open_count = tick_manage_positions(
-                    ex,
-                    on_close_pnl=lambda pnl: register_trade_result(sym, global_phase.get("phase"), pnl)
-                )
-                
+                ex,
+                on_close_pnl=lambda pnl, s=sym: register_trade_result(s, global_phase.get("phase"), pnl)
+            )
+      
                 g_open_positions.set(open_count)
             except Exception as me:
                 c_errors.inc()
@@ -305,6 +305,10 @@ def background_loop():
 def start_bg():
     th = threading.Thread(target=background_loop, daemon=True)
     th.start()
+    # Автостарт фонового циклу при імпорті (працює під Gunicorn)
+if os.getenv("ENABLE_BG", "1") == "1":
+    start_bg()
+
 
 # ------------------ MAIN ------------------
 if __name__ == "__main__":
