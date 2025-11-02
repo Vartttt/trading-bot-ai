@@ -7,6 +7,29 @@ from ai.transformer_trainer import ensure_artifacts
 # Якщо їх немає — ensure_artifacts сам згенерує (train_data, feature_cols, scaler, модель).
 ensure_artifacts()
 
+# --- MUST-HAVE: гарантуємо файли перед будь-якими імпортами/потоками
+import json, shutil
+from ai.transformer_trainer import FEATURE_COLS_PATH, DEFAULT_FEATURE_COLS, MODEL_DIR
+
+# 1) основний файл
+os.makedirs(os.path.dirname(FEATURE_COLS_PATH), exist_ok=True)
+if not os.path.exists(FEATURE_COLS_PATH):
+    with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
+        json.dump(DEFAULT_FEATURE_COLS, f, ensure_ascii=False, indent=2)
+    print("🆕 feature_cols.json створено у", FEATURE_COLS_PATH)
+
+# 2) легасі-шлях ./models/feature_cols.json — для старих імпортів
+LEGACY_DIR = os.path.abspath("./models")
+os.makedirs(LEGACY_DIR, exist_ok=True)
+legacy_fc = os.path.join(LEGACY_DIR, "feature_cols.json")
+if not os.path.exists(legacy_fc):
+    shutil.copy(FEATURE_COLS_PATH, legacy_fc)
+    print("✅ Скопійовано feature_cols.json →", legacy_fc)
+
+# (необов'язково, але корисно подивитися що реально є)
+print("📂 CWD:", os.getcwd())
+print("📄 Наявність:", os.path.exists(FEATURE_COLS_PATH), os.path.exists(legacy_fc))
+
 # ⬇️ ДОДАТИ ОДРАЗУ ПІСЛЯ ensure_artifacts()
 from ai.transformer_trainer import FEATURE_COLS_PATH, DEFAULT_FEATURE_COLS
 import shutil, json
