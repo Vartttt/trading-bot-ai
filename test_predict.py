@@ -1,5 +1,5 @@
 import json
-from ai.transformer_trainer import ensure_artifacts, predict_strength
+from ai.transformer_trainer import ensure_artifacts, TRAIN_DATA_PATH, SCALER_PATH, MODEL_DIR
 
 # гарантуємо наявність артефактів (feature_cols.json тощо)
 ensure_artifacts()
