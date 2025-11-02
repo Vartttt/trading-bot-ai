@@ -7,6 +7,18 @@ from ai.transformer_trainer import ensure_artifacts
 # Якщо їх немає — ensure_artifacts сам згенерує (train_data, feature_cols, scaler, модель).
 ensure_artifacts()
 
+from ai.transformer_trainer import (
+    MODEL_PATH, SCALER_PATH, load_training_data, train_transformer
+)
+
+if not (os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH)):
+    def _bg_train():
+        send_message("🛠 Не знайдено модель/скейлер — запускаю фонове навчання.")
+        load_training_data(limit=20000)
+        train_transformer(epochs=20, seq_len=10)
+        send_message("✅ Навчання завершено, модель готова.")
+    threading.Thread(target=_bg_train, daemon=True).start()
+
 # ⬇️ ДОДАТИ ОДРАЗУ ПІСЛЯ ensure_artifacts()
 from ai.transformer_trainer import MODEL_DIR as AI_MODEL_DIR, FEATURE_COLS_PATH
 import shutil
