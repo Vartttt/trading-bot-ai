@@ -7,6 +7,18 @@ from ai.transformer_trainer import ensure_artifacts
 # Якщо їх немає — ensure_artifacts сам згенерує (train_data, feature_cols, scaler, модель).
 ensure_artifacts()
 
+# ⬇️ ДОДАТИ ОДРАЗУ ПІСЛЯ ensure_artifacts()
+from ai.transformer_trainer import MODEL_DIR as AI_MODEL_DIR, FEATURE_COLS_PATH
+import shutil
+
+LEGACY_DIR = os.path.abspath("./models")  # для старого коду, що читає ./models/...
+os.makedirs(LEGACY_DIR, exist_ok=True)
+
+# якщо старі модулі шукають ./models/feature_cols.json — покладемо туди копію
+legacy_fc = os.path.join(LEGACY_DIR, "feature_cols.json")
+if os.path.exists(FEATURE_COLS_PATH) and not os.path.exists(legacy_fc):
+    shutil.copy(FEATURE_COLS_PATH, legacy_fc)
+
 print("🚀 Стартуємо застосунок далі (локальні артефакти готові)...")
 
 from flask import Flask, jsonify, Response, request  # + request
