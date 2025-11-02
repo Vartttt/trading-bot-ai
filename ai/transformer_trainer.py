@@ -21,9 +21,9 @@ except ModuleNotFoundError:
 os.makedirs(MODEL_DIR, exist_ok=True)
 print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
 
-# --- дефолтні фічі + шлях до файла зі списком фіч ---
+# --- дефолтні фічі ---
 DEFAULT_FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
-FEATURE_COLS_PATH = os.path.join(MODEL_DIR, "feature_cols.json")
+TARGET_COLS = ["next_return", "target"]
 
 # ==============================
 # 🔚 END OF UNIVERSAL IMPORT FIX
@@ -41,10 +41,6 @@ from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import StandardScaler
 from joblib import dump, load
 from notifier.telegram_notifier import send_message
-
-# ---- Features config (safe defaults + back-compat) ----
-DEFAULT_FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
-TARGET_COLS = ["next_return", "target"]
 
 def _resolve_feature_cols(df: pd.DataFrame):
     """
@@ -189,33 +185,37 @@ class SignalTransformer(nn.Module):
         return self.fc(out)
 
 # ============================================================
-# 🏋️‍♂️ Train / Save
+# 🏋️‍♂️ Train / Save  (виправлено)
 # ============================================================
 def train_transformer(epochs=20, batch_size=32, seq_len=50):
     try:
+        ensure_artifacts()
+
         if not os.path.exists(TRAIN_DATA_PATH):
             print("⚠️ Немає train_data.json — створюю...")
             load_training_data(limit=20000)
 
-        df = pd.read_json(TRAIN_DATA_PATH)
+        df = pd.read_json(TRAIN_DATA_PATH, orient="records")
         if df.empty:
             raise ValueError("train_data.json порожній!")
 
-        feature_cols = _resolve_feature_cols(df)   # NEW — визначаємо ознаки
-        df = df[feature_cols].fillna(0)            # лишаємо тільки фічі
-        print(f"✅ Використані фічі: {feature_cols}")
-
+        # визначаємо та зберігаємо порядок фіч
+        feature_cols = _resolve_feature_cols(df)
         with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
             json.dump(feature_cols, f, ensure_ascii=False, indent=2)
+        print(f"✅ Використані фічі: {feature_cols}")
 
-        df["strength"] = np.random.uniform(0, 1, len(df))
+        # X — тільки фічі, y — окремо (тимчасовий таргет-заглушка)
+        X = df[feature_cols].fillna(0).values
+        y = np.random.uniform(0, 1, len(df)).reshape(-1, 1)
 
         scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df.values)
+        X_scaled = scaler.fit_transform(X)
         dump(scaler, SCALER_PATH)
 
-        y = df["strength"].values.reshape(-1, 1)
+        # матриця для датасету: остання колонка — це таргет
         data_mat = np.hstack([X_scaled, y])
+
         dataset = SignalDataset(data_mat, seq_len)
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -247,28 +247,60 @@ def train_transformer(epochs=20, batch_size=32, seq_len=50):
         send_message(f"⚠️ Помилка при тренуванні моделі: {e}")
 
 # ============================================================
-# 🔮 Predict
+# 🔮 Predict  (реальний інференс)
 # ============================================================
-def predict_strength(input_data):
-    import os, json
-    MODEL_DIR = "./models"
-    file_path = os.path.join(MODEL_DIR, "feature_cols.json")
-    # Перевірити, чи існує JSON-файл; якщо ні – створити директорію та файл
-    if not os.path.exists(file_path):
-        os.makedirs(MODEL_DIR, exist_ok=True)  # створює папку "./models", якщо її немає
-        default_cols = []  # наприклад, порожній список або інші дані за замовчуванням
-        with open(file_path, 'w') as f:
-            json.dump(default_cols, f)
-    # Тепер файл існує – можна читати його або використовувати для прогнозу
-    with open(file_path, 'r') as f:
-        feature_cols = json.load(f)
-    # ... (використати feature_cols у логіці прогнозування) ...
+def predict_strength(feature_rows, seq_len=50):
+    """
+    feature_rows: список dict'ів або DataFrame з тими самими фічами, що й під час тренування.
+                  Має містити принаймні `seq_len` останніх рядків (буде паддінг, якщо менше).
+    Повертає: відсоток сили сигналу (0..100).
+    """
+    try:
+        ensure_artifacts()
 
-        send_message(f"📊 Сила сигналу ШІ: {pred * 100:.2f}%")
-        return float(pred * 100)
+        # 1) Завантажуємо порядок фіч
+        if os.path.exists(FEATURE_COLS_PATH):
+            with open(FEATURE_COLS_PATH, "r", encoding="utf-8") as f:
+                feature_cols = json.load(f)
+        else:
+            feature_cols = DEFAULT_FEATURE_COLS
+        if not feature_cols:
+            raise ValueError("feature_cols.json порожній — немає списку фіч.")
+
+        # 2) Завантажуємо scaler і модель
+        scaler = load(SCALER_PATH)
+        model = SignalTransformer(input_dim=len(feature_cols))
+        model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+        model.eval()
+
+        # 3) Готуємо дані
+        if isinstance(feature_rows, pd.DataFrame):
+            df_infer = feature_rows.copy()
+        else:
+            df_infer = pd.DataFrame(feature_rows)
+
+        X = df_infer[feature_cols].fillna(0).values
+        X_scaled = scaler.transform(X)
+
+        # Паддінг до seq_len (повторюємо останній рядок)
+        if X_scaled.shape[0] < seq_len:
+            if X_scaled.shape[0] == 0:
+                raise ValueError("Немає жодного рядка для інференсу.")
+            pad = np.repeat(X_scaled[-1:], seq_len - X_scaled.shape[0], axis=0)
+            X_scaled = np.vstack([X_scaled, pad])
+
+        # 4) Інференс
+        x_seq = torch.tensor(X_scaled[-seq_len:], dtype=torch.float32).unsqueeze(0)  # (1, seq_len, input_dim)
+        with torch.no_grad():
+            pred = float(model(x_seq).squeeze().item())
+
+        pred_pct = max(0.0, min(1.0, pred)) * 100.0
+        send_message(f"📊 Сила сигналу ШІ: {pred_pct:.2f}%")
+        return round(pred_pct, 2)
 
     except Exception as e:
         print(f"⚠️ predict_strength error: {e}")
+        traceback.print_exc()
         send_message(f"⚠️ Помилка під час прогнозу сили сигналу: {e}")
         return 50.0
 
@@ -287,6 +319,7 @@ if __name__ == "__main__":
 
     train_transformer(epochs=20, seq_len=10)
     send_message("✅ Навчання завершено, модель готова до роботи!")
+
 
 
 
