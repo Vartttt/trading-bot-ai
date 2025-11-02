@@ -147,17 +147,6 @@ def load_training_data(symbol="BTCUSDT", interval="15m", limit=20000):
         print(f"❌ Помилка при завантаженні історії: {e}")
         return []
 
-def ensure_artifacts():
-    os.makedirs(MODEL_DIR, exist_ok=True)
-
-    # якщо feature_cols.json відсутній — створюємо з дефолтним списком
-    if not os.path.exists(FEATURE_COLS_PATH):
-        with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
-            json.dump(DEFAULT_FEATURE_COLS, f, ensure_ascii=False, indent=2)
-        print(f"🆕 Створено {FEATURE_COLS_PATH} (дефолтні фічі).")
-    else:
-        print(f"✅ {os.path.basename(FEATURE_COLS_PATH)} існує.")
-
 # ============================================================
 # 🧠 Dataset
 # ============================================================
