@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from joblib import dump
 
-from ai.transformer_trainer import (
+from ai.transformer_trainer import ensure_artifacts, TRAIN_DATA_PATH, SCALER_PATH, MODEL_DIR
     ensure_artifacts,
     MODEL_DIR,
     TRAIN_DATA_PATH,
