@@ -1,16 +1,40 @@
---extra-index-url https://download.pytorch.org/whl/cpu
+# === Основні бібліотеки ===
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+torch>=2.2.0
+joblib>=1.3.0
+ta>=0.11.0
 
-Flask==3.0.3
-gunicorn==21.2.0
-requests==2.32.3
-pandas==2.2.3
-numpy==1.26.4
-ta==0.11.0
-ccxt==4.3.93
-matplotlib==3.8.0
-pyTelegramBotAPI==4.21.0
-python-dotenv==1.0.1
-prometheus-client==0.20.0
-aiohttp==3.9.5
-scikit-learn==1.4.2
-torch==2.2.2+cpu
+# === HTTP-запити та сесії ===
+requests>=2.31.0
+urllib3>=2.1.0
+aiohttp>=3.9.0
+httpx>=0.27.0
+
+# === Обробка та збереження даних ===
+pyarrow>=15.0.0
+fastparquet>=2023.8.0
+
+# === Telegram інтеграція ===
+python-telegram-bot>=20.8
+
+# === Логування, час, системні інструменти ===
+tqdm>=4.66.1
+colorama>=0.4.6
+python-dotenv>=1.0.1
+
+# === Безпечна робота з ретраями (MEXC API) ===
+certifi>=2024.6.0
+idna>=3.6
+charset-normalizer>=3.3.0
+
+# === Опціонально (Railway / продакшн-сервер) ===
+gunicorn>=21.2.0
+uvicorn>=0.29.0
+flask>=3.0.0
+fastapi>=0.110.0
+
+# === Файлова структура, логування та підтримка YAML (опціонально) ===
+pyyaml>=6.0.1
+loguru>=0.7.2
