@@ -1,59 +1,66 @@
-# core/trading_events.py
+"""
+Універсальна система подій для відкриття/закриття позицій.
+Використовується і в симуляції, і в реальній торгівлі.
+"""
+
 import os
 import json
-import time
 from notifier.telegram_notifier import send_message
 
-SAFE_MODE_PATH = os.path.join("/tmp", "safe_mode.json")
-
-# ======================================================
-# 🛡️ Безпечний режим
-# ======================================================
-def set_safe_mode(enabled: bool):
-    """Увімкнути або вимкнути безпечний режим."""
-    data = {"enabled": enabled, "timestamp": time.time()}
-    os.makedirs(os.path.dirname(SAFE_MODE_PATH), exist_ok=True)
-    with open(SAFE_MODE_PATH, "w") as f:
-        json.dump(data, f)
-
-    state = "УВІМКНЕНО" if enabled else "ВИМКНЕНО"
-    send_message(f"🛡️ Безпечний режим {state}.")
-    print(f"[SAFE MODE] {state}")
+SAFE_MODE_FILE = "/tmp/safe_mode.json"
 
 
-def is_safe_mode():
-    """Перевіряє стан безпечного режиму."""
-    if not os.path.exists(SAFE_MODE_PATH):
+# ============================================================
+# 🧩 Безпечний режим
+# ============================================================
+def set_safe_mode(state: bool):
+    """Вмикає або вимикає безпечний режим."""
+    with open(SAFE_MODE_FILE, "w") as f:
+        json.dump({"enabled": state}, f)
+    state_txt = "🟢 Увімкнено" if state else "🔴 Вимкнено"
+    send_message(f"🛡️ Безпечний режим: {state_txt}")
+
+
+def is_safe_mode() -> bool:
+    """Перевіряє, чи безпечний режим активний."""
+    if not os.path.exists(SAFE_MODE_FILE):
         return False
     try:
-        with open(SAFE_MODE_PATH, "r") as f:
-            data = json.load(f)
-        return bool(data.get("enabled", False))
+        data = json.load(open(SAFE_MODE_FILE))
+        return data.get("enabled", False)
     except Exception:
         return False
 
 
-# ======================================================
-# 💰 Події відкриття / закриття позицій
-# ======================================================
-def notify_open_position(symbol: str, side: str, price: float, leverage: int = 1, mode: str = "simulation"):
-    """Повідомлення при відкритті позиції."""
-    msg = (
-        f"🚀 *{mode.upper()}*: Відкрито позицію\n"
-        f"Монета: {symbol}\n"
-        f"Напрям: {side}\n"
-        f"Ціна: {price:.2f}\n"
-        f"Плече: x{leverage}\n"
+# ============================================================
+# 📈 Повідомлення про відкриття позиції
+# ============================================================
+def notify_open_position(symbol, side, price, leverage=1, mode="real"):
+    """
+    Надсилає повідомлення про відкриття позиції.
+    mode = 'simulation' або 'real'
+    """
+    emoji = "🎮" if mode == "simulation" else "🚀"
+    send_message(
+        f"{emoji} <b>Відкрито позицію ({mode.upper()})</b>\n"
+        f"📊 Пара: <code>{symbol}</code>\n"
+        f"📈 Напрям: <b>{side}</b>\n"
+        f"💵 Ціна входу: <code>{price:.4f}</code>\n"
+        f"⚙️ Плече: x{leverage}"
     )
-    send_message(msg)
 
 
-def notify_close_position(symbol: str, profit: float, mode: str = "simulation"):
-    """Повідомлення при закритті позиції."""
-    emoji = "💰" if profit > 0 else "📉"
-    status = "прибутком" if profit > 0 else "збитком"
-    msg = (
-        f"{emoji} *{mode.upper()}*: Позицію {symbol} закрито з {status}\n"
-        f"Результат: {profit:+.2f} USDT"
+# ============================================================
+# 📉 Повідомлення про закриття позиції
+# ============================================================
+def notify_close_position(symbol, profit, mode="real"):
+    """
+    Надсилає повідомлення про закриття позиції.
+    """
+    emoji = "🎮" if mode == "simulation" else "💰"
+    result = "✅ Прибуток" if profit > 0 else "❌ Збиток"
+    send_message(
+        f"{emoji} <b>Закрито позицію ({mode.upper()})</b>\n"
+        f"📊 Пара: <code>{symbol}</code>\n"
+        f"{result}: {profit:.2f} USDT"
     )
-    send_message(msg)
