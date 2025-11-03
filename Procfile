@@ -1,4 +1,5 @@
-web: python app/app.py
+web: python app/app.py & python app/metrics_server.py
+
 
 
 
