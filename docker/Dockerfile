@@ -1,7 +1,15 @@
-FROM python:3.11-slim
+# Базовий образ Python
+FROM python:3.10-slim
+
+# Встановлюємо робочу директорію
 WORKDIR /app
-COPY requirements.txt ./
+
+# Копіюємо все
+COPY . /app
+
+# Встановлюємо залежності
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 8080
+
+# Вказуємо, як запускати бота
 CMD ["python", "app/app.py"]
+
