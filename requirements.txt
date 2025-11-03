@@ -1,18 +1,19 @@
-torch
-pandas
-numpy
-requests
-ta
-scikit-learn
-joblib
-python-telegram-bot
-aiohttp
-asyncio
-matplotlib
-tqdm
-python-dotenv
-flask
-uvicorn
-fastapi
+torch==2.3.1
+numpy==1.26.4
+pandas==2.2.2
+requests==2.32.3
+ta==0.11.0
+scikit-learn==1.5.2
+joblib==1.4.2
+matplotlib==3.9.2
+aiohttp==3.10.5
+python-telegram-bot==21.6
+asyncio==3.4.3
+tqdm==4.66.4
+psutil==6.0.0
+colorama==0.4.6
+loguru==0.7.2
+gunicorn==21.2.0
+
 
 
