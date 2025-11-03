@@ -67,6 +67,21 @@ def send_startup_message():
         silent=True,
     )
 
+def handle_command(command: str):
+    """Обробляє команди /safe_on, /safe_off, /safe_status"""
+    from core.trading_events import set_safe_mode, is_safe_mode
+
+    cmd = command.lower().strip()
+    if cmd == "/safe_on":
+        set_safe_mode(True)
+    elif cmd == "/safe_off":
+        set_safe_mode(False)
+    elif cmd == "/safe_status":
+        state = "🟢 Увімкнено" if is_safe_mode() else "🔴 Вимкнено"
+        send_message(f"🛡️ Безпечний режим: {state}")
+    else:
+        send_message("❓ Доступні команди: /safe_on /safe_off /safe_status")
+
 # ============================================================
 # 🧠 Обробка Telegram-команд (/safe_on, /safe_off, /safe_status)
 # ============================================================
