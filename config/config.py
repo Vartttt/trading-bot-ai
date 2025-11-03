@@ -51,4 +51,15 @@ ENABLE_SESSION_GUARD = os.getenv("ENABLE_SESSION_GUARD", "true").lower() == "tru
 # === Створення директорії моделі (на випадок відсутності) ===
 os.makedirs(MODEL_DIR, exist_ok=True)  # ⬅️ спрощено
 
+# ==========================================
+# ⚙️ SmartTraderBot v9 — нові параметри
+# ==========================================
+DYNSYM_TOPN = 12                # Скільки монет відстежується динамічно
+MAX_GLOBAL_POS = 4              # Максимум одночасних позицій
+MAX_FAMILY_POS = 2              # Максимум з однієї "родини" (BTC/ETH)
+MAX_DAILY_LOSS_PCT = 5.0        # Добовий ліміт втрат %
+MIN_STRENGTH = 65.0             # Мінімальна сила сигналу (%)
+MOVE_SL_TO_BE_AFTER_TP1 = True  # Переносити SL після TP1
+DAILY_REPORT_TIME = "10:00"     # Час щоденного звіту (UTC)
+
 
