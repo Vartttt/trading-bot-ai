@@ -7,6 +7,7 @@ import os
 import requests
 import time
 
+
 # ============================================================
 # ⚙️ Конфігурація
 # ============================================================
@@ -22,6 +23,7 @@ TELEGRAM_CHAT_ID = (
     or os.getenv("Ідентифікатор_Чату")
     or ""
 )
+
 
 # ============================================================
 # 📤 Надсилання повідомлення
@@ -44,12 +46,15 @@ def send_message(text: str, parse_mode: str = "HTML", silent: bool = False):
         }
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         r = requests.post(url, json=payload, timeout=10)
+
         if not r.ok:
-            print("⚠️ Помилка Telegram:", r.text)
+            print(f"⚠️ Telegram error: {r.text}")
         else:
-            print(f"[TG] {text[:60]}{'...' if len(text) > 60 else ''}")
+            print(f"[TG] {text[:70]}{'...' if len(text) > 70 else ''}")
+
     except Exception as e:
-        print("❌ Виняток Telegram:", e)
+        print(f"❌ Telegram exception: {e}")
+
 
 # ============================================================
 # 🚀 Стартове повідомлення
@@ -67,35 +72,22 @@ def send_startup_message():
         silent=True,
     )
 
-def handle_command(command: str):
-    """Обробляє команди /safe_on, /safe_off, /safe_status"""
-    from core.trading_events import set_safe_mode, is_safe_mode
-
-    cmd = command.lower().strip()
-    if cmd == "/safe_on":
-        set_safe_mode(True)
-    elif cmd == "/safe_off":
-        set_safe_mode(False)
-    elif cmd == "/safe_status":
-        state = "🟢 Увімкнено" if is_safe_mode() else "🔴 Вимкнено"
-        send_message(f"🛡️ Безпечний режим: {state}")
-    else:
-        send_message("❓ Доступні команди: /safe_on /safe_off /safe_status")
 
 # ============================================================
-# 🧠 Обробка Telegram-команд (/safe_on, /safe_off, /safe_status)
+# 🛡️ Обробка Telegram-команд (/safe_on, /safe_off, /safe_status)
 # ============================================================
 def handle_command(command: str):
     """
     Обробляє команди керування безпечним режимом:
-    /safe_on — увімкнути безпечний режим
-    /safe_off — вимкнути безпечний режим
-    /safe_status — перевірити стан
+      /safe_on — увімкнути безпечний режим
+      /safe_off — вимкнути безпечний режим
+      /safe_status — перевірити стан
     """
     try:
         from core.trading_events import set_safe_mode, is_safe_mode
 
         cmd = command.lower().strip()
+
         if cmd == "/safe_on":
             set_safe_mode(True)
         elif cmd == "/safe_off":
@@ -104,7 +96,13 @@ def handle_command(command: str):
             state = "🟢 Увімкнено" if is_safe_mode() else "🔴 Вимкнено"
             send_message(f"🛡️ Безпечний режим: {state}")
         else:
-            send_message("❓ Невідома команда.\nДоступні: /safe_on /safe_off /safe_status")
+            send_message(
+                "❓ Невідома команда.\n"
+                "Доступні:\n"
+                "• /safe_on — увімкнути\n"
+                "• /safe_off — вимкнути\n"
+                "• /safe_status — стан"
+            )
 
         print(f"[CMD] Оброблено команду: {command}")
 
@@ -112,11 +110,13 @@ def handle_command(command: str):
         print(f"❌ Помилка обробки команди '{command}': {e}")
         send_message(f"⚠️ Помилка при виконанні команди: {e}")
 
+
 # ============================================================
 # 💡 Приклад використання (у симуляції або реальній торгівлі)
 # ============================================================
 """
 from core.trading_events import notify_open_position, notify_close_position, is_safe_mode
+from notifier.telegram_notifier import send_message
 
 if not is_safe_mode():
     notify_open_position("BTCUSDT", "LONG", 68200, leverage=50)
