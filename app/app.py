@@ -1,428 +1,201 @@
-import os, sys, time, threading
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from ai.transformer_trainer import ensure_artifacts
-
-# 🔒 Працюємо тільки з локальними файлами в MODEL_DIR.
-# Якщо їх немає — ensure_artifacts сам згенерує (train_data, feature_cols, scaler, модель).
-ensure_artifacts()
-
-# --- MUST-HAVE: гарантуємо файли перед будь-якими імпортами/потоками
-import json, shutil
-from ai.transformer_trainer import FEATURE_COLS_PATH, DEFAULT_FEATURE_COLS, MODEL_DIR
-
-# 1) основний файл
-os.makedirs(os.path.dirname(FEATURE_COLS_PATH), exist_ok=True)
-if not os.path.exists(FEATURE_COLS_PATH):
-    with open(FEATURE_COLS_PATH, "w", encoding="utf-8") as f:
-        json.dump(DEFAULT_FEATURE_COLS, f, ensure_ascii=False, indent=2)
-    print("🆕 feature_cols.json створено у", FEATURE_COLS_PATH)
-
-# 2) легасі-шлях ./models/feature_cols.json — для старих імпортів
-LEGACY_DIR = os.path.abspath("./models")
-os.makedirs(LEGACY_DIR, exist_ok=True)
-legacy_fc = os.path.join(LEGACY_DIR, "feature_cols.json")
-if not os.path.exists(legacy_fc):
-    shutil.copy(FEATURE_COLS_PATH, legacy_fc)
-    print("✅ Скопійовано feature_cols.json →", legacy_fc)
-
-# (необов'язково, але корисно подивитися що реально є)
-print("📂 CWD:", os.getcwd())
-print("📄 Наявність:", os.path.exists(FEATURE_COLS_PATH), os.path.exists(legacy_fc))
-
-# ⬇️ ДОДАТИ ОДРАЗУ ПІСЛЯ ensure_artifacts()
-from ai.transformer_trainer import FEATURE_COLS_PATH, DEFAULT_FEATURE_COLS
-import shutil, json
-
-# поточний робочий каталог і "легасі" папка, куди старий код дивиться як на ./models
-print("📂 CWD =", os.getcwd())
-LEGACY_DIR = os.path.abspath("./models")
-os.makedirs(LEGACY_DIR, exist_ok=True)
-
-legacy_fc = os.path.join(LEGACY_DIR, "feature_cols.json")
-
-# 1) якщо є основний файл — копіюємо; 2) інакше створюємо з дефолтного списку
-if not os.path.exists(legacy_fc):
-    if os.path.exists(FEATURE_COLS_PATH):
-        shutil.copy(FEATURE_COLS_PATH, legacy_fc)
-        print(f"✅ Скопійовано feature_cols.json → {legacy_fc}")
-    else:
-        with open(legacy_fc, "w", encoding="utf-8") as f:
-            json.dump(DEFAULT_FEATURE_COLS, f, ensure_ascii=False, indent=2)
-        print(f"🆕 Створено feature_cols.json → {legacy_fc}")
-
-print("🔎 Перевірка:", legacy_fc, "існує =", os.path.exists(legacy_fc))
-
-from ai.transformer_trainer import (
-    MODEL_PATH, SCALER_PATH, load_training_data, train_transformer
-)
-
-if not (os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH)):
-    def _bg_train():
-        send_message("🛠 Не знайдено модель/скейлер — запускаю фонове навчання.")
-        load_training_data(limit=20000)
-        train_transformer(epochs=20, seq_len=10)
-        send_message("✅ Навчання завершено, модель готова.")
-    threading.Thread(target=_bg_train, daemon=True).start()
-
-# ⬇️ ДОДАТИ ОДРАЗУ ПІСЛЯ ensure_artifacts()
-from ai.transformer_trainer import MODEL_DIR as AI_MODEL_DIR, FEATURE_COLS_PATH
-import shutil
-
-LEGACY_DIR = os.path.abspath("./models")  # для старого коду, що читає ./models/...
-os.makedirs(LEGACY_DIR, exist_ok=True)
-
-# якщо старі модулі шукають ./models/feature_cols.json — покладемо туди копію
-legacy_fc = os.path.join(LEGACY_DIR, "feature_cols.json")
-if os.path.exists(FEATURE_COLS_PATH) and not os.path.exists(legacy_fc):
-    shutil.copy(FEATURE_COLS_PATH, legacy_fc)
-
-print("🚀 Стартуємо застосунок далі (локальні артефакти готові)...")
-
-from flask import Flask, jsonify, Response, request  # + request
-import telebot                                       # + telebot
-from notifier.bot_listener import run_bot, bot, BOT_TOKEN  # + bot, BOT_TOKEN
-from prometheus_client import Gauge, Counter, generate_latest, CONTENT_TYPE_LATEST
-
-from core.market_phase import compute_phase_from_df, save_phase_cache, load_phase_cache
-from core.symbol_scanner import get_dynamic_symbols
-from core.phase_filter import filter_symbol_phase
-from core.position_synchronizer import synchronize_positions
-from core.exchange_wrapper import ExchangeWrapper
-from core.data_feed import get_ohlcv
-from core.indicators import enrich
-from indicators.signal_strength import compute_signal_strength
-from risk.smart_risk_curve import get_dynamic_risk
-from risk.smart_tp_sl_curve import tuned_tp_sl
-from optimizer.smart_auto_optimizer import load_weights, optimize_weights
-from notifier.telegram_notifier import send_message
-from core.trade_manager import open_signal_trade, tick_manage_positions
-from core.trade_switch import is_trading_enabled
-from core.alpha_guards import session_guard, news_guard, funding_guard
-from risk.risk_daily_guard import daily_risk_ok, report_trade_pnl
-from core.health_monitor import exchange_ok
-BASE_URL = os.getenv("URL_ADDRESS", "")  # з середовища Railway                                    
-run_bot()
-os.environ.setdefault("RAILWAY_URL", BASE_URL)
-
-# ------------------ ADAPTIVE PROTECTION LAYER ------------------
-
-import statistics
-
-SAFE_LATENCY_LIMIT = 0.6    # межа, коли вмикається Safe Mode
-LATENCY_RECOVERY = 0.25     # коли стабілізується — вимикаємо Safe Mode
-COOLDOWN_SECONDS = 600      # 10 хвилин паузи після збиткової угоди
-MAX_DRAWDOWN_DAY = -3.0     # % денної просадки для зниження ризику
-
-safe_mode = False
-latency_log = []
-cooldowns = {}
-phase_stats = {}
-
-def update_latency(latency: float):
-    """Оновлює середню затримку і керує Safe Mode."""
-    global safe_mode
-    latency_log.append(latency)
-    if len(latency_log) > 20:
-        latency_log.pop(0)
-    avg_latency = statistics.mean(latency_log)
-
-    if avg_latency > SAFE_LATENCY_LIMIT and not safe_mode:
-        safe_mode = True
-        send_message(f"⚠️ <b>Безпечний режим увімкнено</b> — висока затримка ({avg_latency:.2f} с). Торгівля призупинена.")
-    elif avg_latency < LATENCY_RECOVERY and safe_mode:
-        safe_mode = False
-        send_message(f"✅ <b>Безпечний режим вимкнено</b> — стабільна затримка ({avg_latency:.2f} с).")
-
-    return avg_latency, safe_mode
-
-
-def can_trade(symbol: str) -> bool:
-    """Перевіряє, чи можна відкривати нову угоду."""
-    if safe_mode:
-        send_message("⏸ Торгівля тимчасово призупинена через високу затримку.")
-        return False
-
-    now = int(time.time())
-    if symbol in cooldowns and now - cooldowns[symbol] < COOLDOWN_SECONDS:
-        left = COOLDOWN_SECONDS - (now - cooldowns[symbol])
-        send_message(f"🕒 Пауза для {symbol}: очікування {int(left)} с після збиткової угоди.")
-        return False
-    return True
-
-
-def register_trade_result(symbol: str, phase: str, profit_pct: float):
-    """Реєструє результат угоди для статистики winrate."""
-    global phase_stats
-    phase = phase or "UNKNOWN"
-    if phase not in phase_stats:
-        phase_stats[phase] = {"win": 0, "loss": 0}
-
-    if profit_pct >= 0:
-        phase_stats[phase]["win"] += 1
-    else:
-        phase_stats[phase]["loss"] += 1
-        cooldowns[symbol] = int(time.time())
-
-    total = phase_stats[phase]["win"] + phase_stats[phase]["loss"]
-    winrate = 100 * phase_stats[phase]["win"] / max(total, 1)
-    send_message(f"📊 Фаза {phase}: {winrate:.1f}% виграшних угод ({total} угод).")
-
-
-def adjust_risk_on_drawdown(day_drawdown_pct: float, base_risk: float) -> float:
-    """Знижує ризик при великій просадці."""
-    if day_drawdown_pct is not None and day_drawdown_pct < MAX_DRAWDOWN_DAY:
-        new_risk = base_risk * 0.5
-        send_message(f"⚠️ Просадка {day_drawdown_pct:.2f}% → ризик знижено до {new_risk*100:.2f}%.")
-        return new_risk
-    return base_risk
-
-# ------------------ ENV CONFIG ------------------
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))
-PHASE_REFRESH_MIN = int(os.getenv("PHASE_REFRESH_MIN", "30"))
-DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
-MIN_STRENGTH = int(os.getenv("MIN_STRENGTH", "72"))
-
-# ------------------ PROMETHEUS ------------------
-g_last_tick = Gauge("stb_last_tick_ts", "Last background tick timestamp")
-g_open_positions = Gauge("stb_open_positions", "Number of tracked open positions")
-c_signals = Counter("stb_signals_total", "Signals seen (strength >= MIN_STRENGTH)")
-c_trades = Counter("stb_trades_opened_total", "Trades opened")
-c_trades_blocked = Counter("stb_trades_blocked_total", "Trades blocked by guards")
-c_errors = Counter("stb_errors_total", "Errors encountered")
-
-# ------------------ FLASK APP ------------------
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "🤖 SmartTraderBot v8.4 Pro Boosted — працює стабільно ✅"
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-@app.route("/metrics")
-def metrics():
-    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def telegram_webhook():
-    if not bot:
-        return "bot disabled", 200
-    update = telebot.types.Update.de_json(request.stream.read().decode("utf-8"))
-    bot.process_new_updates([update])
-    return "ok", 200
-
-# ------------------ CORE FUNCTIONS ------------------
-def refresh_market_phase(exchange):
-    """Оновлює фазу ринку BTC/USDT (1h + 4h)"""
-    try:
-        df1h = get_ohlcv("BTC/USDT", timeframe="1h", limit=300)
-        df4h = get_ohlcv("BTC/USDT", timeframe="4h", limit=300)
-        if df1h is None or df1h.empty:
-            return
-        x1 = enrich(df1h)
-        x4 = enrich(df4h) if df4h is not None and not df4h.empty else None
-        rec = compute_phase_from_df(x1, x4)
-        save_phase_cache(rec)
-        send_message(f"🛰 Фаза ринку оновлена: {rec['phase']} | Режим: {rec['regime']}")
-    except Exception as e:
-        c_errors.inc()
-        print("phase refresh error:", e)
-
-# ------------------ MAIN LOOP ------------------
-def background_loop():
-    ex = ExchangeWrapper()
-    last_phase_ts = 0
-    last_opt_ts = 0
-
-    send_message("🤖 SmartTraderBot v8.4 Boosted успішно запущено та працює стабільно ✅")
-
-    while True:
-        try:
-            # ✅ HEALTH MONITOR (повна перевірка біржі, latency, балансу та API rate)
-            if not exchange_ok(ex):
-                c_errors.inc()
-                send_message("⛔️ Exchange health failed. Pausing one interval.")
-                time.sleep(CHECK_INTERVAL)
-                continue
-
-            # 🔁 MARKET PHASE UPDATE
-            if time.time() - last_phase_ts > PHASE_REFRESH_MIN * 60:
-                refresh_market_phase(ex)
-                synchronize_positions(ex)
-                last_phase_ts = time.time()
-
-            # 🧠 AUTO OPTIMIZATION (раз на 2 год)
-            if time.time() - last_opt_ts > 7200:
-                try:
-                    new_w = optimize_weights()
-                    send_message(f"🧠 Автоматично оптимізовані ваги індикаторів: {new_w}")
-                    last_opt_ts = time.time()
-                except Exception as oe:
-                    c_errors.inc()
-                    print("optimizer error:", oe)
-
-            # ⚙️ SYMBOL SCANNING
-            symbols = get_dynamic_symbols(top_n=int(os.getenv("DYNSYM_TOPN", "12")))
-            global_phase = load_phase_cache() or {}
-
-            for sym in symbols:
-                try:
-                    # fetch candles
-                    df15 = get_ohlcv(sym, timeframe="15m", limit=200)
-                    if df15 is None or df15.empty:
-                        continue
-                    x = enrich(df15)
-
-                    df1h = get_ohlcv(sym, timeframe="1h", limit=200)
-                    df4h = get_ohlcv(sym, timeframe="4h", limit=200)
-                    mult, comment, local_phase, local_regime = filter_symbol_phase(
-                        enrich(df1h) if df1h is not None else None,
-                        enrich(df4h) if df4h is not None else None,
-                        global_phase
-                    )
-
-                    last = x.iloc[-1]
-                    data = {
-                        "rsi": float(last.get("rsi", 50)),
-                        "macd": float(last.get("macd", 0)),
-                        "macd_signal": float(last.get("macds", 0)),
-                        "ema_fast": float(last.get("ema9", last.close)),
-                        "ema_slow": float(last.get("ema21", last.close)),
-                        "volume": float(last.get("volume", 1)),
-                        "avg_volume": float(x["volume"].tail(50).mean() or 1),
-                        "price": float(last.close),
-                        "atr": float(last.get("atr", last.close * 0.01)),
-                        "momentum": float(last.close - x["close"].iloc[-5])
-                    }
-
-                    # compute signal
-                    weights = load_weights()
-                    s = compute_signal_strength(data, weights, phase=global_phase.get("phase"))
-                    strength = int(s["strength"] * mult)
-                    direction = s["direction"]
-
-                    # risk + TP/SL (tuned)
-                    risk_pct, risk_mode = get_dynamic_risk()
-                    tp_off, sl_off, stats = tuned_tp_sl(data["atr"], strength, sym, regime=global_phase.get("phase","UNKNOWN"))
-
-                    if strength >= MIN_STRENGTH:
-                        c_signals.inc()
-                        # Guards
-                        # 🧠 Перевірка Safe Mode або Cooldown
-                        if not can_trade(sym):
-                            continue
-                        if not session_guard() or not news_guard() or not daily_risk_ok() or not funding_guard(ex, sym):
-                            c_trades_blocked.inc()
-                            continue
-
-                        send_message(
-                            f"📊 <b>{sym}</b> | Сила сигналу: <b>{strength}%</b> напрям: {direction}\n"
-                            f"Фаза: {local_phase} ({mult}x {comment}) | Глобальна: {global_phase.get('phase')}\n"
-                            f"Ризик: {risk_mode} ({risk_pct*100:.2f}%) | ATR={data['atr']:.5f}\n"
-                            f"TP≈{tp_off:.5f} | SL≈{sl_off:.5f} | статистика={stats}"
-                        )
-
-                        # TRADE EXECUTION
-                        if is_trading_enabled() and not DRY_RUN:
-                            try:
-                                # ⚖️ Адаптація ризику при просадці
-                                risk_pct = adjust_risk_on_drawdown(None, risk_pct)
-                                ok, trade_meta = open_signal_trade(
-                                    ex, symbol=sym, direction=direction, price=data["price"], atr=data["atr"],
-                                    base_risk=risk_pct, strength=strength,
-                                    tp_off=tp_off, sl_off=sl_off, factors=s.get("factors", {}),
-                                    phase=global_phase.get("phase")
-                                )
-                                if ok:
-                                    c_trades.inc()
-                                    report_trade_pnl(0.0)
-                            except Exception as te:
-                                c_errors.inc()
-                                send_message(f"❌ Помилка відкриття угоди для {sym}: {te}")
-                except Exception as se:
-                    c_errors.inc()
-                    print("symbol error", sym, se)
-
-            # 🧩 POSITION MANAGEMENT
-            try:
-                # 📊 Реєстрація результатів після кожної угоди
-                open_count = tick_manage_positions(
-                ex,
-                on_close_pnl=lambda pnl, s=sym: register_trade_result(s, global_phase.get("phase"), pnl)
-            )
-      
-                g_open_positions.set(open_count)
-            except Exception as me:
-                c_errors.inc()
-                print("manage error:", me)
-
-            g_last_tick.set(time.time())
-            time.sleep(CHECK_INTERVAL)
-
-            # 🕒 Контроль затримки (latency)
-            latency = time.time() - last_phase_ts  # або заміни на реальний час виконання циклу
-            avg_lat, _ = update_latency(latency)
-
-        except Exception as e:
-            c_errors.inc()
-            print("main loop error:", e)
-            send_message(f"⚠️ Main loop exception: {e}")
-            time.sleep(5)
-
-def start_bg():
-    th = threading.Thread(target=background_loop, daemon=True)
-    th.start()
-    # Автостарт фонового циклу при імпорті (працює під Gunicorn)
-if os.getenv("ENABLE_BG", "1") == "1":
-    start_bg()
-
-
-# ------------------ MAIN ------------------
-if __name__ == "__main__":
-    start_bg()
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")), debug=False)
-
-# ================================
-# 🧩 РЕЖИМ СИМУЛЯЦІЇ + СПОВІЩЕННЯ
-# ================================
-from core.trading_simulator import TradingSimulator
-from notifier.telegram_bot import send_message  # Використовуємо твій наявний телеграм бот
+# ==============================
+# ✅ UNIVERSAL IMPORT & MODEL_DIR HANDLER
+# ==============================
+import os
+import sys
 import time
+import json
+import traceback
+import requests
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import ta
+from torch.utils.data import DataLoader, Dataset
+from sklearn.preprocessing import StandardScaler
+from joblib import dump, load
+from notifier.telegram_notifier import send_message
+from ai.load_training_data import load_training_data
 
-# 🔁 Режим: True = симуляція, False = реальна торгівля
-IS_SIMULATION = True
+# Поточна директорія
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, ".."))
 
-# 🧠 Ініціалізація симулятора, якщо симуляція активна
-sim = TradingSimulator(balance=1000) if IS_SIMULATION else None
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
 
-# 🔔 Повідомлення про запуск
-mode_name = "🔬 РЕЖИМ СИМУЛЯЦІЇ" if IS_SIMULATION else "💹 РЕАЛЬНА ТОРГІВЛЯ"
-send_message(f"🤖 Бот запущено у режимі: {mode_name}\nБаланс: {1000 if IS_SIMULATION else 'біржовий'} USD")
+MODEL_DIR = os.path.join(root_dir, "models")
+os.makedirs(MODEL_DIR, exist_ok=True)
+print(f"✅ MODEL_DIR активний шлях: {MODEL_DIR}")
 
-# 🕒 Функція відстеження результатів
-def monitor_trading():
+# ============================================================
+# ⚙️ Шляхи
+# ============================================================
+MODEL_PATH = os.path.join(MODEL_DIR, "transformer_signal_model.pt")
+SCALER_PATH = os.path.join(MODEL_DIR, "transformer_scaler.joblib")
+TRAIN_DATA_PATH = os.path.join(MODEL_DIR, "train_data.json")
+
+FEATURE_COLS = ["ema_diff5", "rsi5", "atr", "volz5", "trend_accel"]
+
+# ============================================================
+# 🧠 Dataset
+# ============================================================
+class SignalDataset(DataLoader):
+    def __init__(self, data, seq_len=50):
+        X, y = [], []
+        for i in range(len(data) - seq_len):
+            seq = data[i:i + seq_len, :-1]
+            target = data[i + seq_len, -1]
+            X.append(seq)
+            y.append(target)
+        self.X = np.array(X, dtype=np.float32)
+        self.y = np.array(y, dtype=np.float32)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+
+
+# ============================================================
+# 🧩 Transformer Model
+# ============================================================
+class SignalTransformer(nn.Module):
+    def __init__(self, input_dim, embed_dim=64, n_heads=4, ff_dim=128, num_layers=2):
+        super().__init__()
+        self.embedding = nn.Linear(input_dim, embed_dim)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embed_dim, nhead=n_heads, dim_feedforward=ff_dim,
+            dropout=0.1, batch_first=True
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Sequential(
+            nn.Linear(embed_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.embedding(x)
+        encoded = self.encoder(x)
+        out = encoded[:, -1, :]
+        return self.fc(out)
+
+
+# ============================================================
+# 🏋️‍♂️ Train / Save
+# ============================================================
+def train_transformer(epochs=15, batch_size=32, seq_len=50):
     try:
-        while True:
-            if IS_SIMULATION and sim:
-                summary = sim.summary()
-                msg = (
-                    f"📊 Результати симуляції:\n"
-                    f"💰 Баланс: {summary['balance']:.2f} USDT\n"
-                    f"📈 Прибуток/збиток: {summary['profit']:+.2f} USDT\n"
-                    f"📊 Кількість угод: {summary['trades']}\n"
-                )
-                send_message(msg)
-            else:
-                # У реальному режимі просто повідомлення про стан
-                send_message("💹 Бот працює у реальному режимі — моніторинг активний.")
-            time.sleep(600)  # оновлення кожні 10 хвилин
-    except Exception as e:
-        send_message(f"⚠️ Помилка моніторингу: {e}")
+        if not os.path.exists(TRAIN_DATA_PATH):
+            print("⚠️ Немає train_data.json — створюю заново.")
+            load_training_data(limit=20000)
 
-# 🔄 Запуск моніторингу у фоновому потоці
-import threading
-t = threading.Thread(target=monitor_trading, daemon=True)
-t.start()
+        with open(TRAIN_DATA_PATH, "r") as f:
+            data = json.load(f)
+
+        df = pd.DataFrame(data)
+        if any(col not in df.columns for col in FEATURE_COLS):
+            print("⚠️ У train_data.json бракує фіч — перевантажую дані.")
+            load_training_data(limit=20000)
+            df = pd.DataFrame(json.load(open(TRAIN_DATA_PATH)))
+
+        df["strength"] = np.random.uniform(0, 1, len(df))
+        df = df[FEATURE_COLS + ["strength"]].fillna(0)
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(df[FEATURE_COLS])
+        dump(scaler, SCALER_PATH)
+
+        y = df["strength"].values.reshape(-1, 1)
+        data_mat = np.hstack([X_scaled, y])
+
+        dataset = SignalDataset(data_mat, seq_len)
+        if len(dataset) < 50:
+            print("⚠️ Dataset занадто малий для тренування.")
+            return
+
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        model = SignalTransformer(input_dim=len(FEATURE_COLS))
+        criterion = nn.BCELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+
+        for epoch in range(epochs):
+            total_loss = 0
+            for Xb, yb in loader:
+                optimizer.zero_grad()
+                preds = model(Xb).squeeze()
+                loss = criterion(preds, yb)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+            print(f"🧠 Epoch {epoch+1}/{epochs} | Loss: {total_loss/len(loader):.6f}")
+
+        torch.save(model.state_dict(), MODEL_PATH)
+        print(f"✅ Модель збережено: {MODEL_PATH}")
+        send_message("🤖 Модель успішно перевчена та збережена! ✅")
+
+    except Exception as e:
+        print(f"❌ Помилка під час тренування: {e}")
+        traceback.print_exc()
+
+
+# ============================================================
+# 🔮 Predict
+# ============================================================
+def predict_strength(features_dict):
+    try:
+        scaler = load(SCALER_PATH)
+        model = SignalTransformer(input_dim=len(FEATURE_COLS))
+        model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+        model.eval()
+
+        x = np.array([[features_dict[c] for c in FEATURE_COLS]], dtype=float)
+        x_scaled = scaler.transform(x)
+        x_t = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(0)
+
+        with torch.no_grad():
+            pred = model(x_t).item()
+        strength = float(pred * 100)
+        send_message(f"📊 AI сигнал: {strength:.2f}%")
+        return strength
+
+    except Exception as e:
+        print(f"⚠️ predict_strength error: {e}")
+        send_message(f"⚠️ Помилка під час прогнозу сили сигналу: {e}")
+        return 50.0
+
+
+# ============================================================
+# 🚀 Main (ініціалізація)
+# ============================================================
+if __name__ == "__main__":
+    # Якщо дані відсутні або старі — оновлюємо
+    if not os.path.exists(TRAIN_DATA_PATH):
+        load_training_data(limit=20000)
+    else:
+        mtime = os.path.getmtime(TRAIN_DATA_PATH)
+        age_hours = (time.time() - mtime) / 3600
+        if age_hours > 24:
+            print("🔁 Оновлюю train_data.json...")
+            load_training_data(limit=20000)
+
+    # 🧠 Тренування
+    train_transformer(epochs=20, seq_len=10)
+
+    # 🔍 Автоматичний тест після навчання
+    try:
+        with open(TRAIN_DATA_PATH, "r") as f:
+            data = json.load(f)
+            if len(data) > 0:
+                sample = data[-1]
+                send_message("🧪 Виконую тестове прогнозування після навчання...")
+                result = predict_strength(sample)
+                send_message(f"✅ Тестове прогнозування виконано. AI сила сигналу: {result:.2f}%")
+    except Exception as e:
+        print("⚠️ Не вдалося виконати автотест:", e)
+        send_message(f"⚠️ Не вдалося виконати автотест: {e}")
+
