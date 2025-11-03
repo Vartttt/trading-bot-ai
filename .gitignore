@@ -1,31 +1,10 @@
-[ -d gitignore ] && git rm -r gitignore || true
-
-cat > .gitignore <<'GIT'
-# Python
 __pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-
-# venv
-.venv/
-venv/
-env/
-
-# IDE
-.vscode/
-.idea/
-
-# Logs
-*.log
-
-# Secrets
+*.pyc
 .env
+.vscode/
+*.pt
+*.joblib
+models/
+data/
+logs/
 
-# Model artifacts
-models/*.pt
-models/*.joblib
-models/train_data.json
-models/feature_cols.json
-GIT
