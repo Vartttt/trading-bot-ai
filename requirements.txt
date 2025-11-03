@@ -1,41 +1,18 @@
-# --- Основні ---
-python-dotenv==1.0.1
-requests==2.31.0
-pandas==2.2.2
-numpy==1.26.4
-ta==0.11.0
-torch==2.3.0
-scikit-learn==1.5.2
-joblib==1.4.2
+torch
+pandas
+numpy
+requests
+ta
+scikit-learn
+joblib
+python-telegram-bot
+aiohttp
+asyncio
+matplotlib
+tqdm
+python-dotenv
+flask
+uvicorn
+fastapi
 
-# --- Telegram ---
-python-telegram-bot==20.8
-
-# --- AI / ML ---
-transformers==4.43.4
-torchvision==0.18.0
-torchaudio==2.3.0
-
-# --- Dev / System ---
-tqdm==4.66.5
-rich==13.7.1
-colorama==0.4.6
-
-# --- Для аналітики ---
-matplotlib==3.9.2
-seaborn==0.13.2
-plotly==5.24.0
-
-# --- Для обробки паркетів і JSON ---
-pyarrow==17.0.0
-
-# --- Railway/WS ---
-aiohttp==3.9.5
-websockets==12.0
-
-# --- Опціонально (безпека, логування) ---
-psutil==6.0.0
-loguru==0.7.2
-
-# --- Виключено gunicorn (не потрібен для бота) ---
 
