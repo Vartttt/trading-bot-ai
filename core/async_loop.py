@@ -1,17 +1,13 @@
 """
-Async Trading Loop — головний асинхронний цикл для SmartTraderBot v8.4 Pro.
-
-⚙️ Особливості:
-  ✅ Паралельна обробка 10–30 символів без блокувань.
-  ✅ Повна інтеграція з AsyncEngine (engine/async_executor.py).
-  ✅ Використовує ті ж індикатори, ризик, TP/SL, Telegram.
-  ✅ DRY_RUN / LIVE режим сумісний із попередніми версіями.
+Async Trading Loop — головний асинхронний цикл для SmartTraderBot v9.
+Оновлено: додано news_guard, daily_risk_ok, performance tracker та health-check.
 """
 
 import os
 import asyncio
 import time
 from datetime import datetime
+import pandas as pd
 
 # 🔗 Імпорти основних модулів
 from engine.async_executor import AsyncEngine, MDRequest, TradeIntent
@@ -25,11 +21,12 @@ from risk.smart_tp_sl_curve import calc_smart_tp_sl
 from core.phase_filter import filter_symbol_phase
 from core.market_phase import load_phase_cache
 from notifier.telegram_notifier import send_message
-# додай імпорт зверху
 from analytics.async_performance_tracker import AsyncPerfTracker
 
-# 1) створити трекер (поруч з engine = AsyncEngine())
-tracker = AsyncPerfTracker()
+# 🧩 Нові імпорти
+from core.news_guard import news_guard
+from core.daily_guard import daily_risk_ok
+from analytics.daily_report import send_daily_report
 
 # --- Конфігурація
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 30))
@@ -39,33 +36,30 @@ SYMBOLS = os.getenv(
 ).split(",")
 MIN_STRENGTH = int(os.getenv("MIN_STRENGTH", "72"))
 DRY_RUN = os.getenv("DRY_RUN", "True").lower() == "true"
+DAILY_REPORT_TIME = os.getenv("DAILY_REPORT_TIME", "10:00")
 
-# --- AsyncEngine (спільний для всієї сесії)
+# --- Ініціалізація
 engine = AsyncEngine()
-
+tracker = AsyncPerfTracker()
 
 # ============================================================
 # 📊 Обробка нових барів
 # ============================================================
 async def on_market_data(md):
-    """
-    Колбек для обробки даних по кожному символу.
-    Отримує {"symbol","timeframe","data":[ [ts,o,h,l,c,v], ... ]}
-    """
+    """Колбек для обробки даних по кожному символу"""
     try:
         sym = md["symbol"]
         rows = md["data"]
         if not rows or len(rows) < 50:
             return
 
-        import pandas as pd
         df = pd.DataFrame(rows, columns=["ts", "open", "high", "low", "close", "volume"])
         df["ts"] = pd.to_datetime(df["ts"], unit="ms")
         x = enrich(df)
         if x is None or x.empty:
             return
 
-        # фазовий фільтр (рівень тренду/регім)
+        # фазовий фільтр (рівень тренду/режим)
         df1h = get_ohlcv(sym, timeframe="1h", limit=200)
         df4h = get_ohlcv(sym, timeframe="4h", limit=200)
         global_phase = load_phase_cache() or {}
@@ -75,7 +69,6 @@ async def on_market_data(md):
             global_phase
         )
 
-        # поточні дані
         last = x.iloc[-1]
         data = {
             "rsi": float(last.get("rsi", 50)),
@@ -90,13 +83,11 @@ async def on_market_data(md):
             "momentum": float(last.close - x["close"].iloc[-5])
         }
 
-        # сила сигналу
         weights = {}
         s = compute_signal_strength(data, weights)
         strength = int(s["strength"] * mult)
         direction = s["direction"]
 
-        # ризик / TP / SL
         risk_pct, risk_mode = get_dynamic_risk()
         tp_off, sl_off = calc_smart_tp_sl(data["atr"], strength, risk_mode)
 
@@ -120,11 +111,12 @@ async def on_market_data(md):
             TradeIntent(
                 symbol=sym,
                 side="buy" if direction == "long" else "sell",
-                qty=0.02,  # приблизно $20/поз
+                qty=0.02,
                 type="market",
                 on_exec=lambda res: send_message(f"✅ Ордер виконано: {res['symbol']} ({res['status']})")
             )
         )
+        tracker.record_trade(symbol=sym, strength=strength, direction=direction, profit=None)
 
     except Exception as e:
         send_message(f"⚠️ on_market_data error: {e}")
@@ -137,19 +129,47 @@ async def async_main():
     send_message("🚀 Async Trading Loop стартує...")
     await engine.start()
 
+    last_report = None
+
     try:
-        # постійна подача даних
         while True:
+            # 1️⃣ Перевірка новин
+            if not news_guard():
+                send_message("📰 <b>Важливі новини</b> — трейдинг призупинено на 1 хвилину.")
+                await asyncio.sleep(60)
+                continue
+
+            # 2️⃣ Перевірка добового ризику
+            if not daily_risk_ok(current_loss_pct=tracker.daily_loss_pct(), max_daily_loss_pct=5.0):
+                await asyncio.sleep(3600)
+                continue
+
+            # 3️⃣ Щоденний звіт (один раз на день)
+            now = datetime.utcnow()
+            if now.strftime("%H:%M") == DAILY_REPORT_TIME and last_report != now.strftime("%Y-%m-%d"):
+                stats = tracker.get_daily_summary()
+                send_daily_report(
+                    balance=stats["balance"],
+                    profit=stats["profit"],
+                    trades=stats["trades"],
+                    winrate=stats["winrate"]
+                )
+                last_report = now.strftime("%Y-%m-%d")
+
+            # 4️⃣ Паралельне отримання даних по всіх монетах
             tasks = []
             for sym in SYMBOLS:
                 req = MDRequest(symbol=sym, timeframe="15m", limit=200, on_data=on_market_data)
                 tasks.append(engine.submit_md(req))
+
             await asyncio.gather(*tasks)
             await asyncio.sleep(CHECK_INTERVAL)
+
     except asyncio.CancelledError:
         pass
     except Exception as e:
         send_message(f"💥 Main loop error: {e}")
+        await asyncio.sleep(60)
     finally:
         await engine.stop()
         send_message("🛑 Async Loop зупинено.")
@@ -157,3 +177,4 @@ async def async_main():
 
 if __name__ == "__main__":
     asyncio.run(async_main())
+
