@@ -82,10 +82,9 @@ bot_listener.py — обробник команд Telegram для SmartTraderBot
 # 🧠 Обробник Telegram-команд
 # ============================================================
 def handle_command(command: str):
-    """
-    Головна функція для обробки команд із Telegram.
-    """
-    try:
+    """Головна функція для обробки команд із Telegram."""
+    from core.trading_events import set_safe_mode, is_safe_mode
+
         cmd = command.strip().lower()
         dry_run = os.getenv("DRY_RUN", "True").lower() == "true"
 
