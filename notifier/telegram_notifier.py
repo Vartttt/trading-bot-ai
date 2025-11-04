@@ -104,6 +104,35 @@ def handle_command(command: str):
                 "• /safe_status — стан"
             )
 
+# 🧠 Обробка команд користувача з Telegram
+def handle_command(command: str):
+    """
+    Обробляє Telegram-команди.
+    Додано: /mode — показує поточний режим роботи (симуляція або реальна торгівля)
+    """
+    cmd = command.strip().lower()
+    dry_run = os.getenv("DRY_RUN", "True").lower() == "true"
+
+    if cmd == "/mode":
+        if dry_run:
+            send_message("🧪 Поточний режим: <b>СИМУЛЯЦІЯ</b>\nDRY_RUN=True — ордери не надсилаються на біржу.")
+        else:
+            send_message("💰 Поточний режим: <b>РЕАЛЬНА ТОРГІВЛЯ</b>\nDRY_RUN=False — угоди виконуються через MEXC API.")
+    elif cmd == "/safe_on":
+        from core.trading_events import set_safe_mode
+        set_safe_mode(True)
+        send_message("🛡️ Безпечний режим увімкнено.")
+    elif cmd == "/safe_off":
+        from core.trading_events import set_safe_mode
+        set_safe_mode(False)
+        send_message("⚙️ Безпечний режим вимкнено.")
+    elif cmd == "/safe_status":
+        from core.trading_events import is_safe_mode
+        state = "🟢 Увімкнено" if is_safe_mode() else "🔴 Вимкнено"
+        send_message(f"🛡️ Безпечний режим: {state}")
+    else:
+        send_message("❓ Невідома команда.\nДоступні:\n/safe_on /safe_off /safe_status /mode")
+
         print(f"[CMD] Оброблено команду: {command}")
 
     except Exception as e:
