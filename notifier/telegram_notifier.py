@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Telegram Notifier — універсальний відправник повідомлень у канал або чат.
 Підтримує автоперевірку конфігурації, обробку команд і надсилає повідомлення при старті бота.
@@ -73,17 +74,13 @@ def send_startup_message():
     )
 
 
-# -*- coding: utf-8 -*-
-"""
-bot_listener.py — обробник команд Telegram для SmartTraderBot v8.4 Pro
-
-
 # ============================================================
 # 🧠 Обробник Telegram-команд
 # ============================================================
 def handle_command(command: str):
     """Головна функція для обробки команд із Telegram."""
-    from core.trading_events import set_safe_mode, is_safe_mode
+    try:
+        from core.trading_events import set_safe_mode, is_safe_mode
 
         cmd = command.strip().lower()
         dry_run = os.getenv("DRY_RUN", "True").lower() == "true"
@@ -105,19 +102,16 @@ def handle_command(command: str):
 
         # --- /safe_on — увімкнути безпечний режим
         elif cmd == "/safe_on":
-            from core.trading_events import set_safe_mode
             set_safe_mode(True)
             send_message("🛡️ Безпечний режим увімкнено. Торгівля призупинена.")
 
         # --- /safe_off — вимкнути безпечний режим
         elif cmd == "/safe_off":
-            from core.trading_events import set_safe_mode
             set_safe_mode(False)
             send_message("⚙️ Безпечний режим вимкнено. Торгівля активна.")
 
         # --- /safe_status — перевірити стан
         elif cmd == "/safe_status":
-            from core.trading_events import is_safe_mode
             state = "🟢 Увімкнено" if is_safe_mode() else "🔴 Вимкнено"
             send_message(f"🛡️ Безпечний режим: {state}")
 
@@ -133,7 +127,10 @@ def handle_command(command: str):
             )
 
         else:
-            send_message("❓ Невідома команда.\nВведіть /help щоб побачити список доступних команд.")
+            send_message(
+                "❓ Невідома команда.\n"
+                "Введіть /help, щоб побачити список доступних команд."
+            )
 
         print(f"[CMD] Оброблено команду: {command}")
 
@@ -141,20 +138,4 @@ def handle_command(command: str):
         print(f"❌ Помилка обробки команди '{command}': {e}")
         send_message(f"⚠️ Помилка при виконанні команди: {e}")
 
-
-# ============================================================
-# 💡 Приклад використання (у симуляції або реальній торгівлі)
-# ============================================================
-"""
-from core.trading_events import notify_open_position, notify_close_position, is_safe_mode
-from notifier.telegram_notifier import send_message
-
-if not is_safe_mode():
-    notify_open_position("BTCUSDT", "LONG", 68200, leverage=50)
-    # ... виконати трейд
-    profit = 12.3
-    notify_close_position("BTCUSDT", profit)
-else:
-    send_message("🛡️ Безпечний режим увімкнено — відкриття позицій заблоковано.")
-"""
 
